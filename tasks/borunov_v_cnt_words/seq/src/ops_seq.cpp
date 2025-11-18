@@ -1,13 +1,11 @@
-#include <cctype> // Для std::isspace
-#include <string> // Включаем, чтобы гарантировать, что std::string доступен
+#include <cctype>  // Для std::isspace
 #include <iostream>
+#include <string>  // Включаем, чтобы гарантировать, что std::string доступен
 
 // ИСПРАВЛЕНИЕ ОШИБКИ C1083: Используем полный путь к заголовочному файлу
 #include "borunov_v_cnt_words/seq/include/ops_seq.hpp"
 
 namespace borunov_v_cnt_words {
-
-
 
 BorunovVCntWordsSEQ::BorunovVCntWordsSEQ(const InType &in) {
   SetTypeOfTask(GetStaticTypeOfTask());
@@ -24,11 +22,11 @@ bool BorunovVCntWordsSEQ::PreProcessingImpl() {
 }
 
 bool BorunovVCntWordsSEQ::RunImpl() {
-  const InType& str = GetInput(); 
-  
+  const InType &str = GetInput();
+
   if (str.empty()) {
-      GetOutput() = 0;
-      return true;
+    GetOutput() = 0;
+    return true;
   }
 
   OutType count = 0;
@@ -39,7 +37,7 @@ bool BorunovVCntWordsSEQ::RunImpl() {
       in_word = false;
     } else {
       if (!in_word) {
-        count++; 
+        count++;
         in_word = true;
       }
     }

@@ -13,8 +13,8 @@ namespace borunov_v_cnt_words {
 class BorunovVCntWordsPerfTests : public ppc::util::BaseRunPerfTests<InType, OutType> {
  public:
   void SetUp() override {
-    const size_t kNumWords = 10000000; 
-    const std::string kWord = "word "; 
+    const size_t kNumWords = 10000000;
+    const std::string kWord = "word ";
 
     input_data_.reserve(kNumWords * kWord.length());
 

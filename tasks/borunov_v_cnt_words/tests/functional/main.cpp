@@ -1,15 +1,11 @@
 #include <gtest/gtest.h>
 
-#include <algorithm>
+
 #include <array>
 #include <cstddef>
-#include <cstdint>
-#include <numeric>
-#include <stdexcept>
 #include <string>
 #include <tuple>
-#include <utility>
-#include <vector>
+#include <cctype>
 
 #include "borunov_v_cnt_words/common/include/common.hpp"
 #include "borunov_v_cnt_words/mpi/include/ops_mpi.hpp"
@@ -30,7 +26,7 @@ class BorunovVCntWordsFuncTests : public ppc::util::BaseRunFuncTests<InType, Out
 
     std::string sanitized_input;
     for (char c : input_str) {
-      if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+      if (std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_') {
         sanitized_input += c;
       } else {
         sanitized_input += '_';

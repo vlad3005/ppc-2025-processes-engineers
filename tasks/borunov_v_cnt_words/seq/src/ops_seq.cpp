@@ -1,9 +1,9 @@
 #include <cctype>  // Для std::isspace
-#include <iostream>
 #include <string>  // Включаем, чтобы гарантировать, что std::string доступен
 
 // ИСПРАВЛЕНИЕ ОШИБКИ C1083: Используем полный путь к заголовочному файлу
 #include "borunov_v_cnt_words/seq/include/ops_seq.hpp"
+#include "borunov_v_cnt_words/common/include/common.hpp"
 
 namespace borunov_v_cnt_words {
 
@@ -33,7 +33,7 @@ bool BorunovVCntWordsSEQ::RunImpl() {
   bool in_word = false;
 
   for (char c : str) {
-    if (std::isspace(static_cast<unsigned char>(c))) {
+    if (std::isspace(static_cast<unsigned char>(c)) != 0) {
       in_word = false;
     } else {
       if (!in_word) {

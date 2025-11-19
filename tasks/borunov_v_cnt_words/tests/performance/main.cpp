@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
-#include <vector>
+#include <cstddef>
 
 #include "borunov_v_cnt_words/common/include/common.hpp"
 #include "borunov_v_cnt_words/mpi/include/ops_mpi.hpp"
@@ -13,16 +13,16 @@ namespace borunov_v_cnt_words {
 class BorunovVCntWordsPerfTests : public ppc::util::BaseRunPerfTests<InType, OutType> {
  public:
   void SetUp() override {
-    const size_t kNumWords = 10000000;
-    const std::string kWord = "word ";
+    const size_t k_num_words = 10000000;
+    const std::string k_word = "word ";
 
-    input_data_.reserve(kNumWords * kWord.length());
+    input_data_.reserve(k_num_words * k_word.length());
 
-    for (size_t i = 0; i < kNumWords; ++i) {
-      input_data_ += kWord;
+    for (size_t i = 0; i < k_num_words; ++i) {
+      input_data_ += k_word;
     }
 
-    expected_count_ = kNumWords;
+    expected_count_ = k_num_words;
   }
 
   bool CheckTestOutputData(OutType &output_data) final {

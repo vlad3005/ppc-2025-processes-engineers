@@ -6,8 +6,6 @@
 namespace borunov_v_cnt_words {
 
 class BorunovVCntWordsMPI : public BaseTask {
-
-
  public:
   static constexpr ppc::task::TypeOfTask GetStaticTypeOfTask() {
     return ppc::task::TypeOfTask::kMPI;

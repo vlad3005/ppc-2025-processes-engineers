@@ -2,8 +2,8 @@
 #include <string>  // Включаем, чтобы гарантировать, что std::string доступен
 
 // ИСПРАВЛЕНИЕ ОШИБКИ C1083: Используем полный путь к заголовочному файлу
-#include "borunov_v_cnt_words/seq/include/ops_seq.hpp"
 #include "borunov_v_cnt_words/common/include/common.hpp"
+#include "borunov_v_cnt_words/seq/include/ops_seq.hpp"
 
 namespace borunov_v_cnt_words {
 

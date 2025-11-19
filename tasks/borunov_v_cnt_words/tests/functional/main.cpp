@@ -1,11 +1,10 @@
 #include <gtest/gtest.h>
 
-
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <string>
 #include <tuple>
-#include <cctype>
 
 #include "borunov_v_cnt_words/common/include/common.hpp"
 #include "borunov_v_cnt_words/mpi/include/ops_mpi.hpp"

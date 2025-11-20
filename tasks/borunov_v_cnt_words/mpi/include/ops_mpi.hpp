@@ -21,8 +21,8 @@ class BorunovVCntWordsMPI : public BaseTask {
   bool PreProcessingImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
-  static void CalculateChunks(int text_len, int world_size, std::vector<int> &send_counts, std::vector<int> &displs);
-  static uint64_t ComputeLocalCount(const std::string &full_text, int start, int end);
+  static void CalculateDistribution(int text_len, int world_size, std::vector<int> &counts, std::vector<int> &displs);
+  static uint64_t CountWordsLocal(const char *data, int count, char prev_char);
 };
 
 }  // namespace borunov_v_cnt_words

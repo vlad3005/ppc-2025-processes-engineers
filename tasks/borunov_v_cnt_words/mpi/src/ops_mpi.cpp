@@ -2,7 +2,7 @@
 
 #include <mpi.h>
 
-#include <cctype>  // Для std::isspace
+#include <cctype>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -57,7 +57,7 @@ uint64_t BorunovVCntWordsMPI::ComputeLocalCount(const std::string &full_text, in
 
     // Исправлено: implicit conversion 'int' -> 'bool'
     if (!static_cast<bool>(std::isspace(curr))) {
-      bool is_word_start;
+      bool is_word_start = false;
 
       if (i == start) {
         if (start == 0) {

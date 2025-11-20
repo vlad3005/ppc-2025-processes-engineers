@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include "borunov_v_cnt_words/common/include/common.hpp"
 #include "task/include/task.hpp"
 
@@ -17,8 +21,8 @@ class BorunovVCntWordsMPI : public BaseTask {
   bool PreProcessingImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
-  void CalculateChunks(int text_len, int world_size, std::vector<int> &send_counts, std::vector<int> &displs);
-  uint64_t ComputeLocalCount(const std::string &full_text, int start, int end);
+  static void CalculateChunks(int text_len, int world_size, std::vector<int> &send_counts, std::vector<int> &displs);
+  static uint64_t ComputeLocalCount(const std::string &full_text, int start, int end);
 };
 
 }  // namespace borunov_v_cnt_words

@@ -2,11 +2,11 @@
 
 #include <mpi.h>
 
-#include <algorithm>
 #include <cctype>  // Для std::isspace
-#include <sstream>
 #include <string>
 #include <vector>
+
+#include "borunov_v_cnt_words/common/include/common.hpp"
 
 namespace borunov_v_cnt_words {
 BorunovVCntWordsMPI::BorunovVCntWordsMPI(const InType &in) {
@@ -23,74 +23,55 @@ bool BorunovVCntWordsMPI::PreProcessingImpl() {
   return true;
 }
 
-bool BorunovVCntWordsMPI::RunImpl() {
-  int rank = 0;
-  int world_size = 1;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+void BorunovVCntWordsMPI::CalculateChunks(int text_len, int world_size, std::vector<int> &send_counts,
+                                          std::vector<int> &displs) {
+  send_counts.resize(world_size, 0);
+  displs.resize(world_size, 0);
 
-  std::string full_text;
-  if (rank == 0) {
-    full_text = GetInput();
+  // Устраняет сложный if/else-if/for блок, снижая сложность RunImpl.
+  if (text_len <= 0 || world_size <= 0) {
+    // Если текст пуст или 0 процессов, массивы остаются заполненными нулями (по resize)
+    return;
   }
 
-  int text_len = (rank == 0) ? static_cast<int>(full_text.size()) : 0;
-  MPI_Bcast(&text_len, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-  if (rank != 0) {
-    full_text.resize(text_len);
+  int base = text_len / world_size;
+  int extra = text_len % world_size;
+  int off = 0;
+  for (int i = 0; i < world_size; ++i) {
+    // Здесь используется условный оператор, но он локализован
+    send_counts[i] = base + (i < extra ? 1 : 0);
+    displs[i] = off;
+    off += send_counts[i];
   }
+}
 
-  MPI_Bcast(full_text.data(), text_len, MPI_CHAR, 0, MPI_COMM_WORLD);
+// 2. Вынесение сложной логики подсчета слов на границах
+uint64_t BorunovVCntWordsMPI::ComputeLocalCount(const std::string &full_text, int start, int end) {
+  uint64_t local_count = 0;
 
-  std::vector<int> send_counts(world_size, 0);
-  std::vector<int> displs(world_size, 0);
-
-  if (rank == 0) {
-    if (world_size > 0 && text_len > 0) {
-      int base = text_len / world_size;
-      int extra = text_len % world_size;
-      int off = 0;
-      for (int i = 0; i < world_size; ++i) {
-        send_counts[i] = base + (i < extra ? 1 : 0);
-        displs[i] = off;
-        off += send_counts[i];
-      }
-    } else {
-      // текст пустой или один процесс — все нули
-      for (int i = 0; i < world_size; ++i) {
-        send_counts[i] = 0;
-        displs[i] = 0;
-      }
-    }
-  }
-
-  MPI_Bcast(send_counts.data(), world_size, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(displs.data(), world_size, MPI_INT, 0, MPI_COMM_WORLD);
-
-  int start = send_counts.empty() ? 0 : displs[rank];
-  int len = send_counts.empty() ? 0 : send_counts[rank];
-  int end = start + len;  // exclusive
-
-  unsigned long long local_count = 0;
+  // Внутренняя логика подсчета слов
   for (int i = start; i < end; ++i) {
-    unsigned char curr = static_cast<unsigned char>(full_text[i]);
-    if (!std::isspace(curr)) {
-      bool is_word_start = false;
+    // Исправлено: modernize-use-auto
+    auto curr = static_cast<unsigned char>(full_text[i]);
+
+    // Исправлено: implicit conversion 'int' -> 'bool'
+    if (!static_cast<bool>(std::isspace(curr))) {
+      bool is_word_start;
+
       if (i == start) {
         if (start == 0) {
           is_word_start = true;
         } else {
-          unsigned char left = static_cast<unsigned char>(full_text[start - 1]);
-          if (std::isspace(left)) {
-            is_word_start = true;
-          }
+          // Исправлено: modernize-use-auto
+          auto left = static_cast<unsigned char>(full_text[start - 1]);
+          // Исправлено: implicit conversion 'int' -> 'bool'
+          is_word_start = static_cast<bool>(std::isspace(left));
         }
       } else {
-        unsigned char left = static_cast<unsigned char>(full_text[i - 1]);
-        if (std::isspace(left)) {
-          is_word_start = true;
-        }
+        // Исправлено: modernize-use-auto
+        auto left = static_cast<unsigned char>(full_text[i - 1]);
+        // Исправлено: implicit conversion 'int' -> 'bool'
+        is_word_start = static_cast<bool>(std::isspace(left));
       }
 
       if (is_word_start) {
@@ -98,12 +79,76 @@ bool BorunovVCntWordsMPI::RunImpl() {
       }
     }
   }
+  return local_count;
+}
 
-  unsigned long long global_count = 0;
-  MPI_Reduce(&local_count, &global_count, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+bool BorunovVCntWordsMPI::RunImpl() {
+  int rank = 0;
+  int world_size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-  MPI_Bcast(&global_count, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+  std::string full_text;
 
+  // A. Чтение и Bcast данных (Логика rank == 0 вынесена, но Bcast остается)
+  if (rank == 0) {
+    full_text = GetInput();
+  }
+
+  // Исправлено: Условный оператор заменен на if/else-if для снижения сложности
+  // Примечание: Условный оператор (тернарный) считается +1, оставляем его,
+  // но заменяем его на чистый код без вложенности.
+  int text_len = 0;
+  if (rank == 0) {
+    text_len = static_cast<int>(full_text.size());
+  }
+
+  MPI_Bcast(&text_len, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+  // Ранний выход для инициализации, избегая if (rank != 0) { ... }
+  if (rank != 0 && text_len > 0) {
+    full_text.resize(text_len);
+  }
+
+  MPI_Bcast(full_text.data(), text_len, MPI_CHAR, 0, MPI_COMM_WORLD);
+
+  // B. Расчет и Bcast размеров чанков (Логика расчета вынесена)
+  std::vector<int> send_counts;
+  std::vector<int> displs;
+
+  if (rank == 0) {
+    CalculateChunks(text_len, world_size, send_counts, displs);
+  }
+
+  // Убедимся, что все процессы имеют векторы нужного размера перед Bcast
+  send_counts.resize(world_size, 0);
+  displs.resize(world_size, 0);
+
+  MPI_Bcast(send_counts.data(), world_size, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(displs.data(), world_size, MPI_INT, 0, MPI_COMM_WORLD);
+
+  // C. Вычисление локального счетчика (Логика подсчета вынесена)
+  // Условный оператор заменен на явный if для снижения сложности (если это требуется)
+  int start = 0;
+  int len = 0;
+  if (world_size > 0 && rank < world_size) {
+    start = displs[rank];
+    len = send_counts[rank];
+  }
+  int end = start + len;
+
+  // Исправлено: google-runtime-int
+  uint64_t local_count = ComputeLocalCount(full_text, start, end);
+
+  // D. Reduce и Bcast итогов
+  // Исправлено: google-runtime-int
+  uint64_t global_count = 0;
+  MPI_Reduce(&local_count, &global_count, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  MPI_Bcast(&global_count, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+
+  // Исправлено: no header providing "borunov_v_cnt_words::OutType"
+  // (Требуется включение заголовка 'common.hpp' или аналогичного)
   GetOutput() = static_cast<OutType>(global_count);
 
   MPI_Barrier(MPI_COMM_WORLD);

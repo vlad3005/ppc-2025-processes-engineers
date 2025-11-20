@@ -3,6 +3,7 @@
 #include <mpi.h>
 
 #include <cctype>  // Для std::isspace
+#include <cstdint>
 #include <string>
 #include <vector>
 

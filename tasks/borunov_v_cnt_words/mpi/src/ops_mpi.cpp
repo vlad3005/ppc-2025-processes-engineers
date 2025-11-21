@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "borunov_v_cnt_words/common/include/common.hpp"
+
 namespace borunov_v_cnt_words {
 
 BorunovVCntWordsMPI::BorunovVCntWordsMPI(const InType &in) {
@@ -51,17 +53,18 @@ uint64_t BorunovVCntWordsMPI::CountWordsLocal(const char *data, int count, char 
   uint64_t local_cnt = 0;
 
   for (int i = 0; i < count; ++i) {
-    unsigned char current = static_cast<unsigned char>(data[i]);
+    auto current = static_cast<unsigned char>(data[i]);
 
-    if (!std::isspace(current)) {
-      unsigned char prev;
+    if (std::isspace(current) == 0) {
+      unsigned char prev = 0;
+
       if (i == 0) {
         prev = static_cast<unsigned char>(prev_char);
       } else {
         prev = static_cast<unsigned char>(data[i - 1]);
       }
 
-      if (std::isspace(prev)) {
+      if (std::isspace(prev) != 0) {
         local_cnt++;
       }
     }
@@ -88,7 +91,7 @@ bool BorunovVCntWordsMPI::RunImpl() {
     if (rank == 0) {
       global_result = CountWordsLocal(GetInput().data(), text_len, ' ');
     }
-    MPI_Bcast(&global_result, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&global_result, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
     GetOutput() = global_result;
     return true;
   }
@@ -122,8 +125,8 @@ bool BorunovVCntWordsMPI::RunImpl() {
     local_result = CountWordsLocal(local_data.data(), local_count, prev_char);
   }
 
-  MPI_Reduce(&local_result, &global_result, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&global_result, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&local_result, &global_result, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&global_result, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
 
   GetOutput() = global_result;
 

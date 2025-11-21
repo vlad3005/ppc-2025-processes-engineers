@@ -1,145 +1,54 @@
-#include <mpi.h>
+#include <gtest/gtest.h>
 
-#include <cctype>
-#include <cstdint>
+#include <cstddef>
 #include <string>
-#include <vector>
 
 #include "borunov_v_cnt_words/common/include/common.hpp"
 #include "borunov_v_cnt_words/mpi/include/ops_mpi.hpp"
+#include "borunov_v_cnt_words/seq/include/ops_seq.hpp"
+#include "util/include/perf_test_util.hpp"
 
 namespace borunov_v_cnt_words {
 
-BorunovVCntWordsMPI::BorunovVCntWordsMPI(const InType &in) {
-  SetTypeOfTask(GetStaticTypeOfTask());
-  GetInput() = in;
-  GetOutput() = 0;
-}
+class BorunovVCntWordsPerfTests : public ppc::util::BaseRunPerfTests<InType, OutType> {
+ public:
+  void SetUp() override {
+    const size_t k_num_words = 25000000;
+    const std::string k_word = "word ";
 
-bool BorunovVCntWordsMPI::ValidationImpl() {
-  return true;
-}
+    input_data_.reserve(k_num_words * k_word.length());
 
-bool BorunovVCntWordsMPI::PreProcessingImpl() {
-  return true;
-}
-
-void BorunovVCntWordsMPI::CalculateDistribution(int text_len, int world_size, std::vector<int> &counts,
-                                                std::vector<int> &displs) {
-  counts.resize(world_size);
-  displs.resize(world_size);
-
-  if (world_size == 0) {
-    return;
-  }
-
-  int base_count = text_len / world_size;
-  int remainder = text_len % world_size;
-  int current_displ = 0;
-
-  for (int i = 0; i < world_size; ++i) {
-    counts[i] = base_count + (i < remainder ? 1 : 0);
-    displs[i] = current_displ;
-    current_displ += counts[i];
-  }
-}
-
-uint64_t BorunovVCntWordsMPI::CountWordsLocal(const char *data, int count, char prev_char) {
-  if (count == 0) {
-    return 0;
-  }
-
-  uint64_t local_cnt = 0;
-
-  for (int i = 0; i < count; ++i) {
-    // ИСПРАВЛЕНИЕ 2: Использовать auto для избежания дублирования типа
-    auto current = static_cast<unsigned char>(data[i]);
-
-    // ИСПРАВЛЕНИЕ 3: Явное сравнение с 0, чтобы избежать неявного bool-приведения
-    if (std::isspace(current) == 0) {
-      // ИСПРАВЛЕНИЕ 4: Инициализировать переменную
-      unsigned char prev = 0;
-
-      if (i == 0) {
-        prev = static_cast<unsigned char>(prev_char);
-      } else {
-        prev = static_cast<unsigned char>(data[i - 1]);
-      }
-
-      // ИСПРАВЛЕНИЕ 5: Явное сравнение с 0, чтобы избежать неявного bool-приведения
-      if (std::isspace(prev) != 0) {
-        local_cnt++;
-      }
+    for (size_t i = 0; i < k_num_words; ++i) {
+      input_data_ += k_word;
     }
+
+    expected_count_ = k_num_words;
   }
-  return local_cnt;
+
+  bool CheckTestOutputData(OutType &output_data) final {
+    return expected_count_ == output_data;
+  }
+
+  InType GetTestInputData() final {
+    return input_data_;
+  }
+
+ private:
+  InType input_data_;
+  OutType expected_count_ = 0;
+};
+
+TEST_P(BorunovVCntWordsPerfTests, RunPerfModes) {
+  ExecuteTest(GetParam());
 }
 
-bool BorunovVCntWordsMPI::RunImpl() {
-  int rank = 0;
-  int world_size = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+const auto kAllPerfTasks =
+    ppc::util::MakeAllPerfTasks<InType, BorunovVCntWordsMPI, BorunovVCntWordsSEQ>(PPC_SETTINGS_borunov_v_cnt_words);
 
-  int text_len = 0;
-  if (rank == 0) {
-    text_len = static_cast<int>(GetInput().size());
-  }
+const auto kGtestValues = ppc::util::TupleToGTestValues(kAllPerfTasks);
 
-  MPI_Bcast(&text_len, 1, MPI_INT, 0, MPI_COMM_WORLD);
+const auto kPerfTestName = BorunovVCntWordsPerfTests::CustomPerfTestName;
 
-  uint64_t global_result = 0;
-
-  if (text_len < world_size) {
-    if (rank == 0) {
-      global_result = CountWordsLocal(GetInput().data(), text_len, ' ');
-    }
-    // ИСПРАВЛЕНИЕ 6, 8, 9, 10: Используем MPI_UINT64_T для uint64_t для правильного соответствия
-    MPI_Bcast(&global_result, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-    GetOutput() = global_result;
-    return true;
-  }
-
-  std::vector<int> send_counts;
-  std::vector<int> displs;
-  CalculateDistribution(text_len, world_size, send_counts, displs);
-
-  int local_count = send_counts[rank];
-  std::vector<char> local_data(local_count);
-
-  const char *send_buf = (rank == 0) ? GetInput().data() : nullptr;
-
-  MPI_Scatterv(send_buf, send_counts.data(), displs.data(), MPI_CHAR, local_data.data(), local_count, MPI_CHAR, 0,
-               MPI_COMM_WORLD);
-
-  int left_neighbor = (rank == 0) ? MPI_PROC_NULL : rank - 1;
-  int right_neighbor = (rank == world_size - 1) ? MPI_PROC_NULL : rank + 1;
-
-  char char_to_send = ' ';
-  if (local_count > 0) {
-    char_to_send = local_data.back();
-  }
-
-  char prev_char = ' ';
-  MPI_Sendrecv(&char_to_send, 1, MPI_CHAR, right_neighbor, 0, &prev_char, 1, MPI_CHAR, left_neighbor, 0, MPI_COMM_WORLD,
-               MPI_STATUS_IGNORE);
-
-  uint64_t local_result = 0;
-  if (local_count > 0) {
-    local_result = CountWordsLocal(local_data.data(), local_count, prev_char);
-  }
-
-  // ИСПРАВЛЕНИЕ 7, 8, 9, 10: Используем MPI_UINT64_T для uint64_t
-  MPI_Reduce(&local_result, &global_result, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&global_result, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-
-  GetOutput() = global_result;
-
-  return true;
-}
-
-bool BorunovVCntWordsMPI::PostProcessingImpl() {
-  return true;
-}
+INSTANTIATE_TEST_SUITE_P(RunModeTests, BorunovVCntWordsPerfTests, kGtestValues, kPerfTestName);
 
 }  // namespace borunov_v_cnt_words

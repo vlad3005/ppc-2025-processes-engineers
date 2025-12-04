@@ -1,30 +1,33 @@
-#include "example_processes/seq/include/ops_seq.hpp"
+#include "borunov_v_ring/mpi/include/ops_mpi.hpp"
+
+#include <mpi.h>
 
 #include <numeric>
 #include <vector>
 
-#include "example_processes/common/include/common.hpp"
+#include "borunov_v_ring/common/include/common.hpp"
 #include "util/include/util.hpp"
 
-namespace nesterov_a_test_task_processes {
+namespace borunov_v_ring {
 
-NesterovATestTaskSEQ::NesterovATestTaskSEQ(const InType &in) {
+BorunovVRingMPI::BorunovVRingMPI(const InType &in) {
   SetTypeOfTask(GetStaticTypeOfTask());
   GetInput() = in;
   GetOutput() = 0;
 }
 
-bool NesterovATestTaskSEQ::ValidationImpl() {
+bool BorunovVRingMPI::ValidationImpl() {
   return (GetInput() > 0) && (GetOutput() == 0);
 }
 
-bool NesterovATestTaskSEQ::PreProcessingImpl() {
+bool BorunovVRingMPI::PreProcessingImpl() {
   GetOutput() = 2 * GetInput();
   return GetOutput() > 0;
 }
 
-bool NesterovATestTaskSEQ::RunImpl() {
-  if (GetInput() == 0) {
+bool BorunovVRingMPI::RunImpl() {
+  auto input = GetInput();
+  if (input == 0) {
     return false;
   }
 
@@ -41,20 +44,29 @@ bool NesterovATestTaskSEQ::RunImpl() {
   const int num_threads = ppc::util::GetNumThreads();
   GetOutput() *= num_threads;
 
-  int counter = 0;
-  for (int i = 0; i < num_threads; i++) {
-    counter++;
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  if (rank == 0) {
+    GetOutput() /= num_threads;
+  } else {
+    int counter = 0;
+    for (int i = 0; i < num_threads; i++) {
+      counter++;
+    }
+
+    if (counter != 0) {
+      GetOutput() /= counter;
+    }
   }
 
-  if (counter != 0) {
-    GetOutput() /= counter;
-  }
+  MPI_Barrier(MPI_COMM_WORLD);
   return GetOutput() > 0;
 }
 
-bool NesterovATestTaskSEQ::PostProcessingImpl() {
+bool BorunovVRingMPI::PostProcessingImpl() {
   GetOutput() -= GetInput();
   return GetOutput() > 0;
 }
 
-}  // namespace nesterov_a_test_task_processes
+}  // namespace borunov_v_ring

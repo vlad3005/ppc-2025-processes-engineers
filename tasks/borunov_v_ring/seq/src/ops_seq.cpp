@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -11,8 +12,8 @@
 
 namespace {
 // Helper: determine graph neighbors (next, prev) for a given graph_rank.
-static std::pair<int, int> GetGraphNeighbors(MPI_Comm graph_comm, int cart_size, int graph_rank, int next_rank,
-                                             int prev_rank) {
+std::pair<int, int> GetGraphNeighbors(MPI_Comm graph_comm, int cart_size, int graph_rank, int next_rank,
+                                      int prev_rank) {
   int nneighbors = 0;
   MPI_Graph_neighbors_count(graph_comm, graph_rank, &nneighbors);
   std::vector<int> neighbors(static_cast<std::size_t>(nneighbors));
@@ -38,6 +39,30 @@ static std::pair<int, int> GetGraphNeighbors(MPI_Comm graph_comm, int cart_size,
   }
 
   return {graph_next, graph_prev};
+}
+
+// Helper: send path and data to destination over ring communicator
+void SendPath(MPI_Comm comm, int dest, const std::vector<int> &path, int data) {
+  int path_size = static_cast<int>(path.size());
+  MPI_Send(&path_size, 1, MPI_INT, dest, 0, comm);
+  if (path_size > 0) {
+    MPI_Send(path.data(), path_size, MPI_INT, dest, 1, comm);
+  }
+  MPI_Send(&data, 1, MPI_INT, dest, 2, comm);
+}
+
+// Helper: receive path and data from source over ring communicator
+std::tuple<std::vector<int>, int> ReceivePath(MPI_Comm comm, int src) {
+  int path_size = 0;
+  MPI_Status status;
+  MPI_Recv(&path_size, 1, MPI_INT, src, 0, comm, &status);
+  std::vector<int> path(static_cast<std::size_t>(path_size));
+  if (path_size > 0) {
+    MPI_Recv(path.data(), path_size, MPI_INT, src, 1, comm, &status);
+  }
+  int data = 0;
+  MPI_Recv(&data, 1, MPI_INT, src, 2, comm, &status);
+  return {path, data};
 }
 }  // namespace
 
@@ -170,23 +195,14 @@ bool BorunovVRingSEQ::RunImpl() {
       GetOutput() = path_history;
     } else {
       // Отправляем данные следующему процессу в кольце
-      int path_size = static_cast<int>(path_history.size());
-      MPI_Send(&path_size, 1, MPI_INT, graph_next, 0, ring_comm);
-      MPI_Send(path_history.data(), path_size, MPI_INT, graph_next, 1, ring_comm);
-      MPI_Send(&input.data, 1, MPI_INT, graph_next, 2, ring_comm);
+      SendPath(ring_comm, graph_next, path_history, input.data);
     }
   } else if (is_participant) {
     // ========== Я ПРОМЕЖУТОЧНЫЙ УЗЕЛ ИЛИ ПОЛУЧАТЕЛЬ ==========
 
-    int path_size = 0;
-    MPI_Status status;
-
-    MPI_Recv(&path_size, 1, MPI_INT, graph_prev, 0, ring_comm, &status);
-    path_history.resize(path_size);
-    MPI_Recv(path_history.data(), path_size, MPI_INT, graph_prev, 1, ring_comm, &status);
-
-    int received_data = 0;
-    MPI_Recv(&received_data, 1, MPI_INT, graph_prev, 2, ring_comm, &status);
+    auto recv = ReceivePath(ring_comm, graph_prev);
+    path_history = std::get<0>(recv);
+    int received_data = std::get<1>(recv);
 
     path_history.push_back(graph_rank);
 
@@ -195,10 +211,7 @@ bool BorunovVRingSEQ::RunImpl() {
       GetOutput() = path_history;
     } else {
       // ========== ПЕРЕДАЮ ДАЛЬШЕ ПО КОЛЬЦУ ==========
-      path_size = static_cast<int>(path_history.size());
-      MPI_Send(&path_size, 1, MPI_INT, graph_next, 0, ring_comm);
-      MPI_Send(path_history.data(), path_size, MPI_INT, graph_next, 1, ring_comm);
-      MPI_Send(&received_data, 1, MPI_INT, graph_next, 2, ring_comm);
+      SendPath(ring_comm, graph_next, path_history, received_data);
     }
   }
 

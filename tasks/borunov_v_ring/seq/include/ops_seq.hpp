@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "borunov_v_ring/common/include/common.hpp"
 #include "task/include/task.hpp"
 
@@ -8,7 +10,7 @@ namespace borunov_v_ring {
 class BorunovVRingSEQ : public BaseTask {
  public:
   static constexpr ppc::task::TypeOfTask GetStaticTypeOfTask() {
-    return ppc::task::TypeOfTask::kSEQ;
+    return ppc::task::TypeOfTask::kSEQ;  // <-- ИСПРАВЛЕНО
   }
   explicit BorunovVRingSEQ(const InType &in);
 

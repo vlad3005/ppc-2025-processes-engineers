@@ -2,14 +2,21 @@
 
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include "task/include/task.hpp"
 
 namespace borunov_v_ring {
 
-using InType = int;
-using OutType = int;
-using TestType = std::tuple<int, std::string>;
+struct RingTaskData {
+  int data;         // Данные для передачи
+  int source_rank;  // Кто начинает передачу
+  int target_rank;  // Кто должен получить данные
+};
+
+using InType = RingTaskData;
+using OutType = std::vector<int>;  // Результат: список ранков (путь), через которые прошли данные
+using TestType = int;              // Используется для тестов (можно игнорировать или адаптировать)
 using BaseTask = ppc::task::Task<InType, OutType>;
 
 }  // namespace borunov_v_ring

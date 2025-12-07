@@ -80,14 +80,14 @@ bool BorunovVRingSEQ::RunImpl() {
 
   // Для кольцевой топологии каждый процесс связан с двумя соседями
   // Создаем массивы для графовой топологии
-  std::vector<int> index(static_cast<std::size_t>(cart_size));      // Индексы начала списка соседей для каждого процесса
+  std::vector<int> index(static_cast<std::size_t>(cart_size));  // Индексы начала списка соседей для каждого процесса
   std::vector<int> edges(static_cast<std::size_t>(cart_size) * 2);  // Список всех соседей
 
   for (int i = 0; i < cart_size; ++i) {
     index[static_cast<std::size_t>(i)] = (i + 1) * 2;  // Каждый процесс имеет 2 соседа
     const std::size_t base = static_cast<std::size_t>(i) * 2;
-    edges[base] = (i + 1) % cart_size;                             // Следующий процесс
-    edges[base + 1] = (i - 1 + cart_size) % cart_size;             // Предыдущий процесс
+    edges[base] = (i + 1) % cart_size;                  // Следующий процесс
+    edges[base + 1] = (i - 1 + cart_size) % cart_size;  // Предыдущий процесс
   }
 
   MPI_Comm graph_comm = MPI_COMM_WORLD;

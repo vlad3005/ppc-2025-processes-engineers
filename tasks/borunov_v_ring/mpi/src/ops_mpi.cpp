@@ -3,6 +3,7 @@
 #include <mpi.h>
 
 #include <vector>
+
 #include "borunov_v_ring/common/include/common.hpp"
 
 namespace borunov_v_ring {

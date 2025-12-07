@@ -114,8 +114,7 @@ bool BorunovVRingSEQ::RunImpl() {
   int graph_next = 0;
   int graph_prev = 0;
   if (nneighbors >= 2) {
-    // Находим следующего и предыдущего соседа
-    int expected_next = (graph_rank + 1) % cart_size;
+    // Находим предыдущего соседа (и вычисляем ожидаемого следующего по формуле)
     int expected_prev = (graph_rank - 1 + cart_size) % cart_size;
 
     // Упорядочим так, чтобы neighbors[0] был next, neighbors[1] был prev

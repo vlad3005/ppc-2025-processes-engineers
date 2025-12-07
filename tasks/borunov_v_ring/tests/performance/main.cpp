@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include <cstddef>
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
@@ -10,7 +11,7 @@
 
 namespace borunov_v_ring {
 
-// Вспомогательная функция для расчета ожидаемого пути
+namespace {
 OutType CalculateExpectedPath(const InType &input, int size) {
   std::vector<int> path_history;
   int current_rank = input.source_rank;
@@ -23,20 +24,19 @@ OutType CalculateExpectedPath(const InType &input, int size) {
   int max_steps = size;
   int steps = 0;
 
-  // Токен проходит через все узлы, начиная с источника, пока не достигнет цели.
   while (current_rank != target_rank && steps < max_steps) {
     path_history.push_back(current_rank);
-    current_rank = (current_rank + 1) % size;  // Переход к следующему в кольце
+    current_rank = (current_rank + 1) % size;
     steps++;
   }
 
-  // Добавляем целевой узел
   if (steps < max_steps || current_rank == target_rank) {
     path_history.push_back(current_rank);
   }
 
   return path_history;
 }
+}  // namespace
 
 class BorunovVRingPerfTest : public ppc::util::BaseRunPerfTests<InType, OutType> {
   InType input_data_{};
@@ -65,11 +65,7 @@ class BorunovVRingPerfTest : public ppc::util::BaseRunPerfTests<InType, OutType>
       MPI_Comm_size(MPI_COMM_WORLD, &size);
 
       // Если этот процесс является целевым, он должен иметь результат
-      if (rank == input_data_.target_rank) {
-        return false;  // Целевой процесс должен иметь результат
-      }
-      // Если процесс не является целевым, пустой результат допустим
-      return true;
+      return rank != input_data_.target_rank;
     }
 
     // Вычисляем ожидаемый путь

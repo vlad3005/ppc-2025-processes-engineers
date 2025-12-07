@@ -2,9 +2,8 @@
 
 #include <mpi.h>
 
-#include <algorithm>
-#include <iostream>
 #include <vector>
+#include "borunov_v_ring/common/include/common.hpp"
 
 namespace borunov_v_ring {
 
@@ -49,13 +48,13 @@ bool BorunovVRingMPI::RunImpl() {
   // ============================================================
 
   // Создаем группу всех процессов из MPI_COMM_WORLD
-  MPI_Group world_group;
+  MPI_Group world_group = MPI_GROUP_NULL;
   MPI_Comm_group(MPI_COMM_WORLD, &world_group);
 
   // Создаем новый коммуникатор для кольцевой топологии
   // Все процессы остаются в группе, но мы создаем отдельный коммуникатор
   // для явного представления топологии кольца
-  MPI_Comm ring_comm;
+  MPI_Comm ring_comm = MPI_COMM_WORLD;
   MPI_Comm_dup(MPI_COMM_WORLD, &ring_comm);
 
   // Получаем ранг и размер в новом коммуникаторе кольца
@@ -111,7 +110,7 @@ bool BorunovVRingMPI::RunImpl() {
     } else {
       // Отправляем данные следующему процессу в кольце
       // Используем коммуникатор ring_comm для передачи
-      int path_size = path_history.size();
+      int path_size = static_cast<int>(path_history.size());
 
       // Отправляем размер пути
       MPI_Send(&path_size, 1, MPI_INT, next_rank, 0, ring_comm);
@@ -149,7 +148,7 @@ bool BorunovVRingMPI::RunImpl() {
       GetOutput() = path_history;
     } else {
       // ========== ПЕРЕДАЮ ДАЛЬШЕ ПО КОЛЬЦУ ==========
-      path_size = path_history.size();
+      path_size = static_cast<int>(path_history.size());
 
       // Отправляем размер пути следующему процессу
       MPI_Send(&path_size, 1, MPI_INT, next_rank, 0, ring_comm);

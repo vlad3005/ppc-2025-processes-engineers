@@ -2,7 +2,7 @@
 
 #include <mpi.h>
 
-#include <algorithm>
+#include <array>
 #include <vector>
 
 namespace borunov_v_ring {
@@ -48,12 +48,12 @@ bool BorunovVRingSEQ::RunImpl() {
 
   // Создаем одномерную декартову топологию с периодическими границами (кольцо)
   int ndims = 1;
-  int dims[1] = {world_size};  // Размерность: одномерная сетка размером world_size
-  int periods[1] = {1};        // Периодические границы (кольцо)
-  int reorder = 0;             // Не переупорядочиваем процессы
+  std::array<int, 1> dims = {world_size};  // Размерность: одномерная сетка размером world_size
+  std::array<int, 1> periods = {1};        // Периодические границы (кольцо)
+  int reorder = 0;                         // Не переупорядочиваем процессы
 
-  MPI_Comm cart_comm;
-  int cart_result = MPI_Cart_create(MPI_COMM_WORLD, ndims, dims, periods, reorder, &cart_comm);
+  MPI_Comm cart_comm = MPI_COMM_WORLD;
+  int cart_result = MPI_Cart_create(MPI_COMM_WORLD, ndims, dims.data(), periods.data(), reorder, &cart_comm);
 
   if (cart_result != MPI_SUCCESS) {
     // Если не удалось создать декартову топологию, используем MPI_COMM_WORLD
@@ -66,8 +66,8 @@ bool BorunovVRingSEQ::RunImpl() {
   MPI_Comm_size(cart_comm, &cart_size);
 
   // Получаем координаты процесса в декартовой топологии
-  int coords[1];
-  MPI_Cart_coords(cart_comm, cart_rank, ndims, coords);
+  std::array<int, 1> coords;
+  MPI_Cart_coords(cart_comm, cart_rank, ndims, coords.data());
 
   // Определяем соседей в кольцевой топологии используя MPI_Cart_shift
   int next_rank = 0;
@@ -80,16 +80,17 @@ bool BorunovVRingSEQ::RunImpl() {
 
   // Для кольцевой топологии каждый процесс связан с двумя соседями
   // Создаем массивы для графовой топологии
-  std::vector<int> index(cart_size);      // Индексы начала списка соседей для каждого процесса
-  std::vector<int> edges(cart_size * 2);  // Список всех соседей
+  std::vector<int> index(static_cast<std::size_t>(cart_size));      // Индексы начала списка соседей для каждого процесса
+  std::vector<int> edges(static_cast<std::size_t>(cart_size) * 2);  // Список всех соседей
 
   for (int i = 0; i < cart_size; ++i) {
-    index[i] = (i + 1) * 2;                              // Каждый процесс имеет 2 соседа
-    edges[i * 2] = (i + 1) % cart_size;                  // Следующий процесс
-    edges[i * 2 + 1] = (i - 1 + cart_size) % cart_size;  // Предыдущий процесс
+    index[static_cast<std::size_t>(i)] = (i + 1) * 2;  // Каждый процесс имеет 2 соседа
+    const std::size_t base = static_cast<std::size_t>(i) * 2;
+    edges[base] = (i + 1) % cart_size;                             // Следующий процесс
+    edges[base + 1] = (i - 1 + cart_size) % cart_size;             // Предыдущий процесс
   }
 
-  MPI_Comm graph_comm;
+  MPI_Comm graph_comm = MPI_COMM_WORLD;
   int graph_result = MPI_Graph_create(cart_comm, cart_size, index.data(), edges.data(), reorder, &graph_comm);
 
   if (graph_result != MPI_SUCCESS) {
@@ -114,23 +115,15 @@ bool BorunovVRingSEQ::RunImpl() {
   int graph_prev = 0;
   if (nneighbors >= 2) {
     // Находим следующего и предыдущего соседа
-    // Следующий: (rank + 1) % size
-    // Предыдущий: (rank - 1 + size) % size
     int expected_next = (graph_rank + 1) % cart_size;
     int expected_prev = (graph_rank - 1 + cart_size) % cart_size;
 
-    // Определяем, какой сосед является следующим, а какой предыдущим
-    if (neighbors[0] == expected_next) {
-      graph_next = neighbors[0];
-      graph_prev = neighbors[1];
-    } else if (neighbors[0] == expected_prev) {
-      graph_prev = neighbors[0];
-      graph_next = neighbors[1];
-    } else {
-      // Fallback: используем первый и второй сосед
-      graph_next = neighbors[0];
-      graph_prev = neighbors[1];
+    // Упорядочим так, чтобы neighbors[0] был next, neighbors[1] был prev
+    if (neighbors[0] == expected_prev) {
+      std::swap(neighbors[0], neighbors[1]);
     }
+    graph_next = neighbors[0];
+    graph_prev = neighbors[1];
   } else if (nneighbors == 1) {
     // Только один сосед (маловероятно для кольца, но на всякий случай)
     graph_next = neighbors[0];
@@ -172,7 +165,7 @@ bool BorunovVRingSEQ::RunImpl() {
       GetOutput() = path_history;
     } else {
       // Отправляем данные следующему процессу в кольце
-      int path_size = path_history.size();
+      int path_size = static_cast<int>(path_history.size());
       MPI_Send(&path_size, 1, MPI_INT, graph_next, 0, ring_comm);
       MPI_Send(path_history.data(), path_size, MPI_INT, graph_next, 1, ring_comm);
       MPI_Send(&input.data, 1, MPI_INT, graph_next, 2, ring_comm);
@@ -197,7 +190,7 @@ bool BorunovVRingSEQ::RunImpl() {
       GetOutput() = path_history;
     } else {
       // ========== ПЕРЕДАЮ ДАЛЬШЕ ПО КОЛЬЦУ ==========
-      path_size = path_history.size();
+      path_size = static_cast<int>(path_history.size());
       MPI_Send(&path_size, 1, MPI_INT, graph_next, 0, ring_comm);
       MPI_Send(path_history.data(), path_size, MPI_INT, graph_next, 1, ring_comm);
       MPI_Send(&received_data, 1, MPI_INT, graph_next, 2, ring_comm);

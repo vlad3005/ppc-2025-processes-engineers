@@ -3,7 +3,43 @@
 #include <mpi.h>
 
 #include <array>
+#include <cstddef>
+#include <utility>
 #include <vector>
+
+#include "borunov_v_ring/common/include/common.hpp"
+
+namespace {
+// Helper: determine graph neighbors (next, prev) for a given graph_rank.
+static std::pair<int, int> GetGraphNeighbors(MPI_Comm graph_comm, int cart_size, int graph_rank, int next_rank,
+                                             int prev_rank) {
+  int nneighbors = 0;
+  MPI_Graph_neighbors_count(graph_comm, graph_rank, &nneighbors);
+  std::vector<int> neighbors(static_cast<std::size_t>(nneighbors));
+  if (nneighbors > 0) {
+    MPI_Graph_neighbors(graph_comm, graph_rank, nneighbors, neighbors.data());
+  }
+
+  int graph_next = 0;
+  int graph_prev = 0;
+  if (nneighbors >= 2) {
+    int expected_prev = (graph_rank - 1 + cart_size) % cart_size;
+    if (neighbors[0] == expected_prev) {
+      std::swap(neighbors[0], neighbors[1]);
+    }
+    graph_next = neighbors[0];
+    graph_prev = neighbors[1];
+  } else if (nneighbors == 1) {
+    graph_next = neighbors[0];
+    graph_prev = neighbors[0];
+  } else {
+    graph_next = next_rank;
+    graph_prev = prev_rank;
+  }
+
+  return {graph_next, graph_prev};
+}
+}  // namespace
 
 namespace borunov_v_ring {
 
@@ -66,7 +102,7 @@ bool BorunovVRingSEQ::RunImpl() {
   MPI_Comm_size(cart_comm, &cart_size);
 
   // Получаем координаты процесса в декартовой топологии
-  std::array<int, 1> coords;
+  std::array<int, 1> coords{};
   MPI_Cart_coords(cart_comm, cart_rank, ndims, coords.data());
 
   // Определяем соседей в кольцевой топологии используя MPI_Cart_shift
@@ -101,37 +137,7 @@ bool BorunovVRingSEQ::RunImpl() {
   int graph_rank = 0;
   MPI_Comm_rank(graph_comm, &graph_rank);
 
-  // Получаем количество соседей и их список из графовой топологии
-  int nneighbors = 0;
-  MPI_Graph_neighbors_count(graph_comm, graph_rank, &nneighbors);
-  std::vector<int> neighbors(nneighbors);
-  if (nneighbors > 0) {
-    MPI_Graph_neighbors(graph_comm, graph_rank, nneighbors, neighbors.data());
-  }
-
-  // Определяем соседей из графовой топологии
-  // В кольце каждый процесс имеет двух соседей: предыдущий и следующий
-  int graph_next = 0;
-  int graph_prev = 0;
-  if (nneighbors >= 2) {
-    // Находим предыдущего соседа (и вычисляем ожидаемого следующего по формуле)
-    int expected_prev = (graph_rank - 1 + cart_size) % cart_size;
-
-    // Упорядочим так, чтобы neighbors[0] был next, neighbors[1] был prev
-    if (neighbors[0] == expected_prev) {
-      std::swap(neighbors[0], neighbors[1]);
-    }
-    graph_next = neighbors[0];
-    graph_prev = neighbors[1];
-  } else if (nneighbors == 1) {
-    // Только один сосед (маловероятно для кольца, но на всякий случай)
-    graph_next = neighbors[0];
-    graph_prev = neighbors[0];
-  } else {
-    // Нет соседей - используем значения из cart_shift
-    graph_next = next_rank;
-    graph_prev = prev_rank;
-  }
+  auto [graph_next, graph_prev] = GetGraphNeighbors(graph_comm, cart_size, graph_rank, next_rank, prev_rank);
 
   // Используем графовую топологию для передачи данных
   MPI_Comm ring_comm = graph_comm;

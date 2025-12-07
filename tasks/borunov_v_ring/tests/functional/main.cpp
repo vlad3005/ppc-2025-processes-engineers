@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
@@ -11,7 +12,6 @@
 #include "borunov_v_ring/seq/include/ops_seq.hpp"
 #include "util/include/func_test_util.hpp"
 #include "util/include/perf_test_util.hpp"  // Для TupleToGTestValues
-#include "util/include/util.hpp"
 
 namespace borunov_v_ring {
 

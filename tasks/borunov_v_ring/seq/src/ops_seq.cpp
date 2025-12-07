@@ -64,6 +64,70 @@ std::tuple<std::vector<int>, int> ReceivePath(MPI_Comm comm, int src) {
   MPI_Recv(&data, 1, MPI_INT, src, 2, comm, &status);
   return {path, data};
 }
+
+// Helper: determine if a rank participates in the transmission
+bool IsParticipant(int rank, int source, int target, int size) {
+  if (source == target) {
+    return rank == source;
+  }
+  return (source < target) ? (rank >= source && rank <= target) : (rank >= source || rank <= target);
+}
+
+// Helper: setup and create topologies (cartesian and graph)
+struct TopoSetup {
+  int cart_rank;
+  int cart_size;
+  int graph_next;
+  int graph_prev;
+  MPI_Comm cart_comm;
+  MPI_Comm graph_comm;
+  int cart_result;
+  int graph_result;
+};
+
+TopoSetup CreateTopologies(int world_size) {
+  TopoSetup topo{};
+  int ndims = 1;
+  std::array<int, 1> dims = {world_size};
+  std::array<int, 1> periods = {1};
+  int reorder = 0;
+
+  topo.cart_comm = MPI_COMM_WORLD;
+  topo.cart_result = MPI_Cart_create(MPI_COMM_WORLD, ndims, dims.data(), periods.data(), reorder, &topo.cart_comm);
+  if (topo.cart_result != MPI_SUCCESS) {
+    topo.cart_comm = MPI_COMM_WORLD;
+  }
+
+  MPI_Comm_rank(topo.cart_comm, &topo.cart_rank);
+  MPI_Comm_size(topo.cart_comm, &topo.cart_size);
+
+  std::array<int, 1> coords{};
+  MPI_Cart_coords(topo.cart_comm, topo.cart_rank, ndims, coords.data());
+
+  int next_rank = 0, prev_rank = 0;
+  MPI_Cart_shift(topo.cart_comm, 0, 1, &prev_rank, &next_rank);
+
+  std::vector<int> index(static_cast<std::size_t>(topo.cart_size));
+  std::vector<int> edges(static_cast<std::size_t>(topo.cart_size) * 2);
+  for (int i = 0; i < topo.cart_size; ++i) {
+    index[static_cast<std::size_t>(i)] = (i + 1) * 2;
+    const std::size_t base = static_cast<std::size_t>(i) * 2;
+    edges[base] = (i + 1) % topo.cart_size;
+    edges[base + 1] = (i - 1 + topo.cart_size) % topo.cart_size;
+  }
+
+  topo.graph_comm = MPI_COMM_WORLD;
+  topo.graph_result =
+      MPI_Graph_create(topo.cart_comm, topo.cart_size, index.data(), edges.data(), reorder, &topo.graph_comm);
+  if (topo.graph_result != MPI_SUCCESS) {
+    topo.graph_comm = topo.cart_comm;
+  }
+
+  auto [gn, gp] = GetGraphNeighbors(topo.graph_comm, topo.cart_size, topo.cart_rank, next_rank, prev_rank);
+  topo.graph_next = gn;
+  topo.graph_prev = gp;
+  return topo;
+}
 }  // namespace
 
 namespace borunov_v_ring {
@@ -94,136 +158,48 @@ bool BorunovVRingSEQ::PreProcessingImpl() {
 }
 
 bool BorunovVRingSEQ::RunImpl() {
-  int world_rank = 0;
   int world_size = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
   const auto &input = GetInput();
   int source = input.source_rank;
   int target = input.target_rank;
 
-  // ============================================================
-  // СОЗДАНИЕ ВИРТУАЛЬНОЙ ТОПОЛОГИИ КОЛЬЦА С ИСПОЛЬЗОВАНИЕМ MPI_Cart_Create
-  // ============================================================
-
-  // Создаем одномерную декартову топологию с периодическими границами (кольцо)
-  int ndims = 1;
-  std::array<int, 1> dims = {world_size};  // Размерность: одномерная сетка размером world_size
-  std::array<int, 1> periods = {1};        // Периодические границы (кольцо)
-  int reorder = 0;                         // Не переупорядочиваем процессы
-
-  MPI_Comm cart_comm = MPI_COMM_WORLD;
-  int cart_result = MPI_Cart_create(MPI_COMM_WORLD, ndims, dims.data(), periods.data(), reorder, &cart_comm);
-
-  if (cart_result != MPI_SUCCESS) {
-    // Если не удалось создать декартову топологию, используем MPI_COMM_WORLD
-    cart_comm = MPI_COMM_WORLD;
-  }
-
-  int cart_rank = 0;
-  int cart_size = 0;
-  MPI_Comm_rank(cart_comm, &cart_rank);
-  MPI_Comm_size(cart_comm, &cart_size);
-
-  // Получаем координаты процесса в декартовой топологии
-  std::array<int, 1> coords{};
-  MPI_Cart_coords(cart_comm, cart_rank, ndims, coords.data());
-
-  // Определяем соседей в кольцевой топологии используя MPI_Cart_shift
-  int next_rank = 0;
-  int prev_rank = 0;
-  MPI_Cart_shift(cart_comm, 0, 1, &prev_rank, &next_rank);  // Сдвиг на 1 в направлении 0
-
-  // ============================================================
-  // СОЗДАНИЕ ГРАФОВОЙ ТОПОЛОГИИ С ИСПОЛЬЗОВАНИЕМ MPI_Graph_Create
-  // ============================================================
-
-  // Для кольцевой топологии каждый процесс связан с двумя соседями
-  // Создаем массивы для графовой топологии
-  std::vector<int> index(static_cast<std::size_t>(cart_size));  // Индексы начала списка соседей для каждого процесса
-  std::vector<int> edges(static_cast<std::size_t>(cart_size) * 2);  // Список всех соседей
-
-  for (int i = 0; i < cart_size; ++i) {
-    index[static_cast<std::size_t>(i)] = (i + 1) * 2;  // Каждый процесс имеет 2 соседа
-    const std::size_t base = static_cast<std::size_t>(i) * 2;
-    edges[base] = (i + 1) % cart_size;                  // Следующий процесс
-    edges[base + 1] = (i - 1 + cart_size) % cart_size;  // Предыдущий процесс
-  }
-
-  MPI_Comm graph_comm = MPI_COMM_WORLD;
-  int graph_result = MPI_Graph_create(cart_comm, cart_size, index.data(), edges.data(), reorder, &graph_comm);
-
-  if (graph_result != MPI_SUCCESS) {
-    // Если не удалось создать графовую топологию, используем cart_comm
-    graph_comm = cart_comm;
-  }
-
+  auto topo = CreateTopologies(world_size);
   int graph_rank = 0;
-  MPI_Comm_rank(graph_comm, &graph_rank);
+  MPI_Comm_rank(topo.graph_comm, &graph_rank);
+  MPI_Comm ring_comm = topo.graph_comm;
 
-  auto [graph_next, graph_prev] = GetGraphNeighbors(graph_comm, cart_size, graph_rank, next_rank, prev_rank);
-
-  // Используем графовую топологию для передачи данных
-  MPI_Comm ring_comm = graph_comm;
-
-  // ============================================================
-  // ПЕРЕДАЧА ДАННЫХ ЧЕРЕЗ КОЛЬЦЕВУЮ ТОПОЛОГИЮ
-  // ============================================================
-
-  // Вектор, который будет хранить путь прохождения данных через кольцо
   std::vector<int> path_history;
-
-  // Определяем, участвует ли текущий процесс в передаче данных
-  bool is_participant = false;
-
-  if (source == target) {
-    is_participant = (graph_rank == source);
-  } else {
-    if (source < target) {
-      is_participant = (graph_rank >= source && graph_rank <= target);
-    } else {
-      is_participant = (graph_rank >= source || graph_rank <= target);
-    }
-  }
+  bool is_participant = IsParticipant(graph_rank, source, target, topo.cart_size);
 
   if (graph_rank == source) {
-    // ========== Я ИСТОЧНИК ==========
     path_history.push_back(graph_rank);
-
+    if (graph_rank != target) {
+      SendPath(ring_comm, topo.graph_next, path_history, input.data);
+    }
     if (graph_rank == target) {
       GetOutput() = path_history;
-    } else {
-      // Отправляем данные следующему процессу в кольце
-      SendPath(ring_comm, graph_next, path_history, input.data);
     }
   } else if (is_participant) {
-    // ========== Я ПРОМЕЖУТОЧНЫЙ УЗЕЛ ИЛИ ПОЛУЧАТЕЛЬ ==========
-
-    auto recv = ReceivePath(ring_comm, graph_prev);
+    auto recv = ReceivePath(ring_comm, topo.graph_prev);
     path_history = std::get<0>(recv);
     int received_data = std::get<1>(recv);
-
     path_history.push_back(graph_rank);
-
     if (graph_rank == target) {
-      // ========== Я ЦЕЛЬ ==========
       GetOutput() = path_history;
     } else {
-      // ========== ПЕРЕДАЮ ДАЛЬШЕ ПО КОЛЬЦУ ==========
-      SendPath(ring_comm, graph_next, path_history, received_data);
+      SendPath(ring_comm, topo.graph_next, path_history, received_data);
     }
   }
 
-  // Синхронизация всех процессов
   MPI_Barrier(ring_comm);
 
-  // Освобождаем созданные коммуникаторы
-  if (graph_result == MPI_SUCCESS && graph_comm != MPI_COMM_WORLD) {
-    MPI_Comm_free(&graph_comm);
+  if (topo.graph_result == MPI_SUCCESS && topo.graph_comm != MPI_COMM_WORLD) {
+    MPI_Comm_free(&topo.graph_comm);
   }
-  if (cart_result == MPI_SUCCESS && cart_comm != MPI_COMM_WORLD) {
-    MPI_Comm_free(&cart_comm);
+  if (topo.cart_result == MPI_SUCCESS && topo.cart_comm != MPI_COMM_WORLD) {
+    MPI_Comm_free(&topo.cart_comm);
   }
 
   return true;

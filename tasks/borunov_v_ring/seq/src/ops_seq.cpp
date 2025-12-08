@@ -140,7 +140,15 @@ BorunovVRingSEQ::BorunovVRingSEQ(const InType &in) {
 }
 
 bool BorunovVRingSEQ::ValidationImpl() {
-  // Проверяем валидность входных данных относительно текущего размера коммуникатора
+  // Проверяем валидность входных данных. Если MPI ещё не инициализирован,
+  // проверяем только базовые свойства (ненегативность). Это избегает вызовов
+  // MPI_* до MPI_Init (например, при построении тестовых параметров).
+  int initialized = 0;
+  MPI_Initialized(&initialized);
+  if (!initialized) {
+    return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
+  }
+
   int size = 0;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 

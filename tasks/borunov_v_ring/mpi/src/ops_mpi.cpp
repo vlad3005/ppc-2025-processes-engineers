@@ -16,6 +16,15 @@ BorunovVRingMPI::BorunovVRingMPI(const InType &in) {
 
 // Валидация: проверяем корректность ранков источника и назначения
 bool BorunovVRingMPI::ValidationImpl() {
+  // As above, avoid calling MPI functions before MPI_Init. If MPI is not
+  // initialized yet, only perform simple non-negativity checks so that
+  // constructing task parameters or inspecting tasks doesn't require MPI.
+  int initialized = 0;
+  MPI_Initialized(&initialized);
+  if (!initialized) {
+    return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
+  }
+
   int size = 0;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 

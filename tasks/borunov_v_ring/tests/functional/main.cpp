@@ -12,6 +12,7 @@
 #include "borunov_v_ring/seq/include/ops_seq.hpp"
 #include "util/include/func_test_util.hpp"
 #include "util/include/perf_test_util.hpp"  // Для TupleToGTestValues
+#include "util/include/util.hpp"
 
 namespace borunov_v_ring {
 

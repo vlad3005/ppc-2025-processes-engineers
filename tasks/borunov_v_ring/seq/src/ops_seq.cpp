@@ -130,6 +130,69 @@ TopoSetup CreateTopologies(int world_size) {
   topo.graph_prev = gp;
   return topo;
 }
+
+// Run helpers to reduce cognitive complexity of RunImpl
+static bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int source, int target) {
+  int size = ppc::util::GetNumProc();
+  if (size <= 0) {
+    self->GetOutput().clear();
+    return true;
+  }
+  std::vector<int> path_history;
+  int current = source % size;
+  int steps = 0;
+  while (current != (target % size) && steps < size) {
+    path_history.push_back(current);
+    current = (current + 1) % size;
+    ++steps;
+  }
+  if (steps < size || current == (target % size)) {
+    path_history.push_back(current);
+  }
+  self->GetOutput() = path_history;
+  return true;
+}
+
+static bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target, int world_size) {
+  auto topo = CreateTopologies(world_size);
+  int graph_rank = 0;
+  MPI_Comm_rank(topo.graph_comm, &graph_rank);
+  MPI_Comm ring_comm = topo.graph_comm;
+
+  std::vector<int> path_history;
+  bool is_participant = IsParticipant(graph_rank, source, target);
+
+  if (graph_rank == source) {
+    path_history.push_back(graph_rank);
+    if (graph_rank != target) {
+      SendPath(ring_comm, topo.graph_next, path_history, self->GetInput().data);
+    }
+    if (graph_rank == target) {
+      self->GetOutput() = path_history;
+    }
+  } else if (is_participant) {
+    auto recv = ReceivePath(ring_comm, topo.graph_prev);
+    path_history = std::get<0>(recv);
+    int received_data = std::get<1>(recv);
+    path_history.push_back(graph_rank);
+    if (graph_rank == target) {
+      self->GetOutput() = path_history;
+    } else {
+      SendPath(ring_comm, topo.graph_next, path_history, received_data);
+    }
+  }
+
+  MPI_Barrier(ring_comm);
+
+  if (topo.graph_result == MPI_SUCCESS && topo.graph_comm != MPI_COMM_WORLD) {
+    MPI_Comm_free(&topo.graph_comm);
+  }
+  if (topo.cart_result == MPI_SUCCESS && topo.cart_comm != MPI_COMM_WORLD) {
+    MPI_Comm_free(&topo.cart_comm);
+  }
+
+  return true;
+}
 }  // namespace
 
 namespace borunov_v_ring {
@@ -149,17 +212,8 @@ bool BorunovVRingSEQ::ValidationImpl() {
   if (initialized == 0) {
     return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
   }
-
-  int size = 0;
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-  // Check basic validity (non-negativity).
-  // Rank normalization will happen in RunImpl if needed.
-  if (GetInput().source_rank < 0 || GetInput().target_rank < 0) {
-    return false;
-  }
-
-  return true;
+  // Basic non-negativity check. RunImpl will normalize ranks when MPI is up.
+  return !(GetInput().source_rank < 0 || GetInput().target_rank < 0);
 }
 
 bool BorunovVRingSEQ::PreProcessingImpl() {
@@ -170,76 +224,18 @@ bool BorunovVRingSEQ::RunImpl() {
   int source = GetInput().source_rank;
   int target = GetInput().target_rank;
 
-  // If not running under mpirun, execute sequential (single-process) logic
   if (!ppc::util::IsUnderMpirun()) {
-    int size = ppc::util::GetNumProc();
-    // Normalize ranks
-    if (size > 0) {
-      source = source % size;
-      target = target % size;
-    }
-    std::vector<int> path_history;
-    int current = source;
-    int steps = 0;
-    while (current != target && steps < size) {
-      path_history.push_back(current);
-      current = (current + 1) % size;
-      ++steps;
-    }
-    if (steps < size || current == target) {
-      path_history.push_back(current);
-    }
-    GetOutput() = path_history;
-    return true;
+    return RunSequentialFallback(this, source, target);
   }
 
   int world_size = 0;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-  // Normalize ranks modulo world size
   if (world_size > 0) {
     source = source % world_size;
     target = target % world_size;
   }
 
-  auto topo = CreateTopologies(world_size);
-  int graph_rank = 0;
-  MPI_Comm_rank(topo.graph_comm, &graph_rank);
-  MPI_Comm ring_comm = topo.graph_comm;
-
-  std::vector<int> path_history;
-  bool is_participant = IsParticipant(graph_rank, source, target);
-
-  if (graph_rank == source) {
-    path_history.push_back(graph_rank);
-    if (graph_rank != target) {
-      SendPath(ring_comm, topo.graph_next, path_history, GetInput().data);
-    }
-    if (graph_rank == target) {
-      GetOutput() = path_history;
-    }
-  } else if (is_participant) {
-    auto recv = ReceivePath(ring_comm, topo.graph_prev);
-    path_history = std::get<0>(recv);
-    int received_data = std::get<1>(recv);
-    path_history.push_back(graph_rank);
-    if (graph_rank == target) {
-      GetOutput() = path_history;
-    } else {
-      SendPath(ring_comm, topo.graph_next, path_history, received_data);
-    }
-  }
-
-  MPI_Barrier(ring_comm);
-
-  if (topo.graph_result == MPI_SUCCESS && topo.graph_comm != MPI_COMM_WORLD) {
-    MPI_Comm_free(&topo.graph_comm);
-  }
-  if (topo.cart_result == MPI_SUCCESS && topo.cart_comm != MPI_COMM_WORLD) {
-    MPI_Comm_free(&topo.cart_comm);
-  }
-
-  return true;
+  return RunMpiBranch(this, source, target, world_size);
 }
 
 bool BorunovVRingSEQ::PostProcessingImpl() {

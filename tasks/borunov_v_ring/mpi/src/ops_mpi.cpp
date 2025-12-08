@@ -66,6 +66,14 @@ void HandleParticipant(BorunovVRingMPI *self, MPI_Comm ring_comm, int prev_rank,
   int path_size = 0;
   MPI_Status status;
   MPI_Recv(&path_size, 1, MPI_INT, prev_rank, 0, ring_comm, &status);
+  // Validate and clamp received path size to avoid invalid allocations
+  int comm_size = 0;
+  MPI_Comm_size(ring_comm, &comm_size);
+  if (path_size < 0) {
+    path_size = 0;
+  } else if (path_size > comm_size) {
+    path_size = comm_size;
+  }
   std::vector<int> path_history(static_cast<std::size_t>(path_size));
   if (path_size > 0) {
     MPI_Recv(path_history.data(), path_size, MPI_INT, prev_rank, 1, ring_comm, &status);

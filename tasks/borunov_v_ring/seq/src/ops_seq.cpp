@@ -57,6 +57,14 @@ std::tuple<std::vector<int>, int> ReceivePath(MPI_Comm comm, int src) {
   int path_size = 0;
   MPI_Status status;
   MPI_Recv(&path_size, 1, MPI_INT, src, 0, comm, &status);
+  // Validate and clamp path_size based on communicator size to avoid bad allocations
+  int comm_size = 0;
+  MPI_Comm_size(comm, &comm_size);
+  if (path_size < 0) {
+    path_size = 0;
+  } else if (path_size > comm_size) {
+    path_size = comm_size;
+  }
   std::vector<int> path(static_cast<std::size_t>(path_size));
   if (path_size > 0) {
     MPI_Recv(path.data(), path_size, MPI_INT, src, 1, comm, &status);

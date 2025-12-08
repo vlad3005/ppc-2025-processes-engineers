@@ -66,7 +66,7 @@ std::tuple<std::vector<int>, int> ReceivePath(MPI_Comm comm, int src) {
 }
 
 // Helper: determine if a rank participates in the transmission
-bool IsParticipant(int rank, int source, int target, int size) {
+bool IsParticipant(int rank, int source, int target) {
   if (source == target) {
     return rank == source;
   }
@@ -171,7 +171,7 @@ bool BorunovVRingSEQ::RunImpl() {
   MPI_Comm ring_comm = topo.graph_comm;
 
   std::vector<int> path_history;
-  bool is_participant = IsParticipant(graph_rank, source, target, topo.cart_size);
+  bool is_participant = IsParticipant(graph_rank, source, target);
 
   if (graph_rank == source) {
     path_history.push_back(graph_rank);

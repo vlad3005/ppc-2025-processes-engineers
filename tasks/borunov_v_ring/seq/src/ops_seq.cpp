@@ -104,7 +104,8 @@ TopoSetup CreateTopologies(int world_size) {
   std::array<int, 1> coords{};
   MPI_Cart_coords(topo.cart_comm, topo.cart_rank, ndims, coords.data());
 
-  int next_rank = 0, prev_rank = 0;
+  int next_rank = 0;
+  int prev_rank = 0;
   MPI_Cart_shift(topo.cart_comm, 0, 1, &prev_rank, &next_rank);
 
   std::vector<int> index(static_cast<std::size_t>(topo.cart_size));

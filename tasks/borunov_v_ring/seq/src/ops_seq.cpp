@@ -145,7 +145,7 @@ bool BorunovVRingSEQ::ValidationImpl() {
   // MPI_* до MPI_Init (например, при построении тестовых параметров).
   int initialized = 0;
   MPI_Initialized(&initialized);
-  if (!initialized) {
+  if (initialized == 0) {
     return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
   }
 

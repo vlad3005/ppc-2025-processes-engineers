@@ -180,13 +180,15 @@ bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target,
     }
   } else if (is_participant) {
     auto recv = ReceivePath(ring_comm, topo.graph_prev);
-    path_history = std::get<0>(recv);
+    std::vector<int> received_path = std::get<0>(recv);
     int received_data = std::get<1>(recv);
-    path_history.push_back(graph_rank);
+    received_path.push_back(graph_rank);
     if (graph_rank == target) {
-      self->GetOutput() = path_history;
+      std::vector<int> output;
+      output = received_path;
+      self->GetOutput() = output;
     } else {
-      SendPath(ring_comm, topo.graph_next, path_history, received_data);
+      SendPath(ring_comm, topo.graph_next, received_path, received_data);
     }
   }
 

@@ -51,12 +51,16 @@ void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int 
   std::vector<int> path_history;
   path_history.push_back(ring_rank);
   if (ring_rank == target) {
-    self->GetOutput() = path_history;
+    std::vector<int> output;
+    output = path_history;
+    self->GetOutput() = output;
     return;
   }
   int path_size = static_cast<int>(path_history.size());
   MPI_Send(&path_size, 1, MPI_INT, next_rank, 0, ring_comm);
-  MPI_Send(path_history.data(), path_size, MPI_INT, next_rank, 1, ring_comm);
+  if (path_size > 0) {
+    MPI_Send(path_history.data(), path_size, MPI_INT, next_rank, 1, ring_comm);
+  }
   MPI_Send(&data, 1, MPI_INT, next_rank, 2, ring_comm);
 }
 

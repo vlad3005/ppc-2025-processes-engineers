@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
+#include "util/include/util.hpp"
 
 namespace {
 // Helper: determine graph neighbors (next, prev) for a given graph_rank.
@@ -152,10 +153,9 @@ bool BorunovVRingSEQ::ValidationImpl() {
   int size = 0;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  if (GetInput().source_rank < 0 || GetInput().source_rank >= size) {
-    return false;
-  }
-  if (GetInput().target_rank < 0 || GetInput().target_rank >= size) {
+  // Check basic validity (non-negativity).
+  // Rank normalization will happen in RunImpl if needed.
+  if (GetInput().source_rank < 0 || GetInput().target_rank < 0) {
     return false;
   }
 
@@ -167,12 +167,40 @@ bool BorunovVRingSEQ::PreProcessingImpl() {
 }
 
 bool BorunovVRingSEQ::RunImpl() {
+  int source = GetInput().source_rank;
+  int target = GetInput().target_rank;
+
+  // If not running under mpirun, execute sequential (single-process) logic
+  if (!ppc::util::IsUnderMpirun()) {
+    int size = ppc::util::GetNumProc();
+    // Normalize ranks
+    if (size > 0) {
+      source = source % size;
+      target = target % size;
+    }
+    std::vector<int> path_history;
+    int current = source;
+    int steps = 0;
+    while (current != target && steps < size) {
+      path_history.push_back(current);
+      current = (current + 1) % size;
+      ++steps;
+    }
+    if (steps < size || current == target) {
+      path_history.push_back(current);
+    }
+    GetOutput() = path_history;
+    return true;
+  }
+
   int world_size = 0;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-  const auto &input = GetInput();
-  int source = input.source_rank;
-  int target = input.target_rank;
+  // Normalize ranks modulo world size
+  if (world_size > 0) {
+    source = source % world_size;
+    target = target % world_size;
+  }
 
   auto topo = CreateTopologies(world_size);
   int graph_rank = 0;
@@ -185,7 +213,7 @@ bool BorunovVRingSEQ::RunImpl() {
   if (graph_rank == source) {
     path_history.push_back(graph_rank);
     if (graph_rank != target) {
-      SendPath(ring_comm, topo.graph_next, path_history, input.data);
+      SendPath(ring_comm, topo.graph_next, path_history, GetInput().data);
     }
     if (graph_rank == target) {
       GetOutput() = path_history;

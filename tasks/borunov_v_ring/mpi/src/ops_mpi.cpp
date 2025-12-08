@@ -28,11 +28,9 @@ bool BorunovVRingMPI::ValidationImpl() {
   int size = 0;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  // Проверяем, что указанные ранги существуют в текущем коммуникаторе
-  if (GetInput().source_rank < 0 || GetInput().source_rank >= size) {
-    return false;
-  }
-  if (GetInput().target_rank < 0 || GetInput().target_rank >= size) {
+  // Check basic validity (non-negativity).
+  // Rank normalization will happen in RunImpl if needed.
+  if (GetInput().source_rank < 0 || GetInput().target_rank < 0) {
     return false;
   }
 
@@ -52,6 +50,12 @@ bool BorunovVRingMPI::RunImpl() {
   const auto &input = GetInput();
   int source = input.source_rank;
   int target = input.target_rank;
+
+  // Normalize ranks modulo world size
+  if (world_size > 0) {
+    source = source % world_size;
+    target = target % world_size;
+  }
 
   // ============================================================
   // СОЗДАНИЕ ВИРТУАЛЬНОЙ ТОПОЛОГИИ КОЛЬЦА С ИСПОЛЬЗОВАНИЕМ КОММУНИКАТОРОВ

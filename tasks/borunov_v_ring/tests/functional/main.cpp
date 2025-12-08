@@ -58,21 +58,39 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
     // В MPI реализации только процесс-получатель (target) имеет результат
     // Если output_data пустой, значит этот процесс не является получателем
     // В этом случае проверка должна пройти (процесс не участвовал в получении результата)
-    if (output_data.empty()) {
-      // Проверяем, должен ли этот процесс иметь результат
-      int rank = 0;
-      int size = 0;
+
+    int rank = 0;
+    int size = 0;
+    if (ppc::util::IsUnderMpirun()) {
       MPI_Comm_rank(MPI_COMM_WORLD, &rank);
       MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-      // Если этот процесс является целевым, он должен иметь результат
-      return rank != input_data_.target_rank;
+    } else {
+      rank = 0;
+      size = ppc::util::GetNumProc();
     }
 
-    // Вычисляем ожидаемый путь
-    int size = 0;
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    OutType expected_path = CalculateExpectedPath(input_data_, size);
+    // Normalize ranks like in RunImpl
+    int normalized_target = input_data_.target_rank;
+    if (size > 0) {
+      normalized_target = normalized_target % size;
+    }
+
+    if (output_data.empty()) {
+      // Если этот процесс является целевым (после нормализации), он должен иметь результат
+      return rank != normalized_target;
+    }
+
+    // Вычисляем ожидаемый путь (используя нормализованные ранки)
+    int normalized_source = input_data_.source_rank;
+    if (size > 0) {
+      normalized_source = normalized_source % size;
+    }
+
+    RingTaskData normalized_input = input_data_;
+    normalized_input.source_rank = normalized_source;
+    normalized_input.target_rank = normalized_target;
+
+    OutType expected_path = CalculateExpectedPath(normalized_input, size);
 
     // Сравниваем полученный путь с ожидаемым
     if (output_data.size() != expected_path.size()) {

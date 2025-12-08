@@ -132,7 +132,7 @@ TopoSetup CreateTopologies(int world_size) {
 }
 
 // Run helpers to reduce cognitive complexity of RunImpl
-static bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int source, int target) {
+bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int source, int target) {
   int size = ppc::util::GetNumProc();
   if (size <= 0) {
     self->GetOutput().clear();
@@ -153,7 +153,7 @@ static bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int sou
   return true;
 }
 
-static bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target, int world_size) {
+bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target, int world_size) {
   auto topo = CreateTopologies(world_size);
   int graph_rank = 0;
   MPI_Comm_rank(topo.graph_comm, &graph_rank);
@@ -213,7 +213,7 @@ bool BorunovVRingSEQ::ValidationImpl() {
     return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
   }
   // Basic non-negativity check. RunImpl will normalize ranks when MPI is up.
-  return !(GetInput().source_rank < 0 || GetInput().target_rank < 0);
+  return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
 }
 
 bool BorunovVRingSEQ::PreProcessingImpl() {

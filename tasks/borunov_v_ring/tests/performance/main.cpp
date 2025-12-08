@@ -7,9 +7,7 @@
 #include "borunov_v_ring/common/include/common.hpp"
 #include "borunov_v_ring/mpi/include/ops_mpi.hpp"
 #include "borunov_v_ring/seq/include/ops_seq.hpp"
-// Directly include util to satisfy misc-include-cleaner for IsUnderMpirun/GetNumProc
 #include "util/include/perf_test_util.hpp"
-#include "util/include/util.hpp"
 
 namespace borunov_v_ring {
 

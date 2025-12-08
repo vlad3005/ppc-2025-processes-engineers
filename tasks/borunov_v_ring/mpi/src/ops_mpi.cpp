@@ -2,6 +2,7 @@
 
 #include <mpi.h>
 
+#include <cstddef>
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
@@ -26,7 +27,7 @@ bool BorunovVRingMPI::ValidationImpl() {
   }
 
   // Basic non-negativity check. RunImpl will normalize ranks when MPI is up.
-  return !(GetInput().source_rank < 0 || GetInput().target_rank < 0);
+  return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
 }
 
 bool BorunovVRingMPI::PreProcessingImpl() {
@@ -35,7 +36,7 @@ bool BorunovVRingMPI::PreProcessingImpl() {
 
 namespace {
 // Helper: determine participation on ring for given ranks
-static bool ComputeIsParticipant(int ring_rank, int source, int target) {
+bool ComputeIsParticipant(int ring_rank, int source, int target) {
   if (source == target) {
     return ring_rank == source;
   }
@@ -46,8 +47,7 @@ static bool ComputeIsParticipant(int ring_rank, int source, int target) {
 }
 
 // Handle the case when current rank is the source: send to next
-static void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int next_rank, int target,
-                         int data) {
+void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int next_rank, int target, int data) {
   std::vector<int> path_history;
   path_history.push_back(ring_rank);
   if (ring_rank == target) {
@@ -61,8 +61,8 @@ static void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_ran
 }
 
 // Handle participant receiving and forwarding
-static void HandleParticipant(BorunovVRingMPI *self, MPI_Comm ring_comm, int prev_rank, int next_rank, int ring_rank,
-                              int target) {
+void HandleParticipant(BorunovVRingMPI *self, MPI_Comm ring_comm, int prev_rank, int next_rank, int ring_rank,
+                       int target) {
   int path_size = 0;
   MPI_Status status;
   MPI_Recv(&path_size, 1, MPI_INT, prev_rank, 0, ring_comm, &status);

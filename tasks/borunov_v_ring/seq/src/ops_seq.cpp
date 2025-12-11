@@ -2,6 +2,7 @@
 
 #include <mpi.h>
 
+#include <array>
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
@@ -75,10 +76,10 @@ bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int source, in
 // Ring topology using Cartesian topology
 bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target, int world_size) {
   // Create 1D Cartesian ring topology
-  int dims[1] = {world_size};
-  int periods[1] = {1};
+  std::array<int, 1> dims = {world_size};
+  std::array<int, 1> periods = {1};
   MPI_Comm ring_comm = MPI_COMM_WORLD;
-  MPI_Cart_create(MPI_COMM_WORLD, 1, dims, periods, 0, &ring_comm);
+  MPI_Cart_create(MPI_COMM_WORLD, 1, dims.data(), periods.data(), 0, &ring_comm);
 
   int ring_rank = 0;
   int ring_size = 0;

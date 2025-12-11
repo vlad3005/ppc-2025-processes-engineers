@@ -11,15 +11,13 @@
 #include "borunov_v_ring/mpi/include/ops_mpi.hpp"
 #include "borunov_v_ring/seq/include/ops_seq.hpp"
 #include "util/include/func_test_util.hpp"
-#include "util/include/perf_test_util.hpp"  // Для TupleToGTestValues
+#include "util/include/perf_test_util.hpp"
 #include "util/include/util.hpp"
 
 namespace borunov_v_ring {
 
-// TestType для функциональных тестов: входные данные + имя
 using FuncTestType = std::tuple<InType, std::string>;
 
-namespace {
 OutType CalculateExpectedPath(const InType &input, int size) {
   std::vector<int> path_history;
   int current_rank = input.source_rank;
@@ -44,7 +42,6 @@ OutType CalculateExpectedPath(const InType &input, int size) {
 
   return path_history;
 }
-}  // namespace
 
 class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutType, FuncTestType> {
  public:
@@ -56,10 +53,6 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
   }
 
   bool CheckTestOutputData(OutType &output_data) override {
-    // В MPI реализации только процесс-получатель (target) имеет результат
-    // Если output_data пустой, значит этот процесс не является получателем
-    // В этом случае проверка должна пройти (процесс не участвовал в получении результата)
-
     int rank = 0;
     int size = 0;
     if (ppc::util::IsUnderMpirun()) {
@@ -70,18 +63,15 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
       size = ppc::util::GetNumProc();
     }
 
-    // Normalize ranks like in RunImpl
     int normalized_target = input_data_.target_rank;
     if (size > 0) {
       normalized_target = normalized_target % size;
     }
 
     if (output_data.empty()) {
-      // Если этот процесс является целевым (после нормализации), он должен иметь результат
       return rank != normalized_target;
     }
 
-    // Вычисляем ожидаемый путь (используя нормализованные ранки)
     int normalized_source = input_data_.source_rank;
     if (size > 0) {
       normalized_source = normalized_source % size;
@@ -93,7 +83,6 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
 
     OutType expected_path = CalculateExpectedPath(normalized_input, size);
 
-    // Сравниваем полученный путь с ожидаемым
     if (output_data.size() != expected_path.size()) {
       return false;
     }
@@ -107,19 +96,14 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
     return true;
   }
 
-  // InType (RingTaskData) - маленькая структура, обычно возвращается по значению
   InType GetTestInputData() override {
     return input_data_;
   }
 
  protected:
   void SetUp() override {
-    // Используем auto, чтобы не писать сложный тип TaskParamType вручную
     const auto &full_params = GetParam();
-    // Пользовательские данные (FuncTestType) находятся третьим элементом
     const auto &user_test_data = std::get<2>(full_params);
-
-    // Извлекаем InType из FuncTestType
     input_data_ = std::get<0>(user_test_data);
   }
 
@@ -127,13 +111,10 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
   InType input_data_ = {0, 0, 0};
 };
 
-namespace {
-
 TEST_P(BorunovVRingFuncTestes, RingPathTest) {
   ExecuteTest(GetParam());
 }
 
-// Тестовые наборы входных данных: {data, source_rank, target_rank}
 const std::array<FuncTestType, 6> kRingTestParam = {
     FuncTestType({10, 0, 2}, "ShortPath_0_to_2"),  FuncTestType({20, 1, 1}, "FullCycle_1_to_1"),
     FuncTestType({30, 3, 1}, "WrapAround_3_to_1"), FuncTestType({40, 2, 3}, "Adjacent_2_to_3"),
@@ -145,9 +126,7 @@ const auto kFuncTestTasksList =
 
 const auto kFuncGtestValues = ppc::util::TupleToGTestValues(kFuncTestTasksList);
 
-// Используем PrintFuncTestName из базового класса, который включает имя задачи (MPI/SEQ)
 INSTANTIATE_TEST_SUITE_P(BorunovVRingFuncTestInstantiation, BorunovVRingFuncTestes, kFuncGtestValues,
                          BorunovVRingFuncTestes::PrintFuncTestName<BorunovVRingFuncTestes>);
 
-}  // namespace
 }  // namespace borunov_v_ring

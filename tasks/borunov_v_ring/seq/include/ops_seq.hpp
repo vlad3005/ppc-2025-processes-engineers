@@ -8,7 +8,7 @@ namespace borunov_v_ring {
 class BorunovVRingSEQ : public BaseTask {
  public:
   static constexpr ppc::task::TypeOfTask GetStaticTypeOfTask() {
-    return ppc::task::TypeOfTask::kSEQ;  // <-- ИСПРАВЛЕНО
+    return ppc::task::TypeOfTask::kSEQ;
   }
   explicit BorunovVRingSEQ(const InType &in);
 

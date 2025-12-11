@@ -11,7 +11,7 @@
 
 namespace borunov_v_ring {
 
-namespace {
+// Эталонная функция расчета пути (взята из функциональных тестов)
 OutType CalculateExpectedPath(const InType &input, int size) {
   std::vector<int> path_history;
   int current_rank = input.source_rank;
@@ -36,45 +36,36 @@ OutType CalculateExpectedPath(const InType &input, int size) {
 
   return path_history;
 }
-}  // namespace
 
 class BorunovVRingPerfTest : public ppc::util::BaseRunPerfTests<InType, OutType> {
+ public:
   InType input_data_{};
 
+ protected:
   void SetUp() override {
-    // Инициализируем RingTaskData: {data, source_rank, target_rank}
-    // Для performance тестов используем простой случай: передача от процесса 0 к процессу 1
-    int size = 0;
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    if (size > 1) {
-      input_data_ = RingTaskData{100, 0, 1};
-    } else {
-      input_data_ = RingTaskData{100, 0, 0};
-    }
+    // Устанавливаем параметры в точности как в тесте ZeroToLast_0_to_3
+    // Значение: 50, Источник: 0, Цель: 3
+    input_data_ = RingTaskData{50, 0, 3};
   }
 
   bool CheckTestOutputData(OutType &output_data) final {
-    // В MPI реализации только процесс-получатель (target) имеет результат
-    // Если output_data пустой, значит этот процесс не является получателем
-    // В этом случае проверка должна пройти (процесс не участвовал в получении результата)
-
     int rank = 0;
     int size = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    // Normalize ranks like in RunImpl
+    // Нормализация цели (как в функциональных тестах)
     int normalized_target = input_data_.target_rank;
     if (size > 0) {
       normalized_target = normalized_target % size;
     }
 
+    // Если вектор пустой, этот ранг НЕ должен быть целевым
     if (output_data.empty()) {
-      // Если этот процесс является целевым (после нормализации), он должен иметь результат
       return rank != normalized_target;
     }
 
-    // Вычисляем ожидаемый путь (используя нормализованные ранки)
+    // Нормализация источника
     int normalized_source = input_data_.source_rank;
     if (size > 0) {
       normalized_source = normalized_source % size;
@@ -84,13 +75,15 @@ class BorunovVRingPerfTest : public ppc::util::BaseRunPerfTests<InType, OutType>
     normalized_input.source_rank = normalized_source;
     normalized_input.target_rank = normalized_target;
 
+    // Расчет эталонного пути
     OutType expected_path = CalculateExpectedPath(normalized_input, size);
 
-    // Сравниваем полученный путь с ожидаемым
+    // Сверка размера пути
     if (output_data.size() != expected_path.size()) {
       return false;
     }
 
+    // Поэлементная сверка пути
     for (size_t i = 0; i < output_data.size(); ++i) {
       if (output_data[i] != expected_path[i]) {
         return false;

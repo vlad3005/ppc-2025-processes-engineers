@@ -2,7 +2,9 @@
 
 #include <mpi.h>
 
+#include <chrono>
 #include <cstddef>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -13,18 +15,14 @@ namespace borunov_v_ring {
 BorunovVRingMPI::BorunovVRingMPI(const InType &in) {
   SetTypeOfTask(GetStaticTypeOfTask());
   GetInput() = in;
-  // GetOutput() инициализируется пустым вектором по умолчанию
 }
 
-// Валидация: проверяем корректность ранков источника и назначения
 bool BorunovVRingMPI::ValidationImpl() {
   int initialized = 0;
   MPI_Initialized(&initialized);
   if (initialized == 0) {
     return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
   }
-
-  // Basic non-negativity check. RunImpl will normalize ranks when MPI is up.
   return (GetInput().source_rank >= 0 && GetInput().target_rank >= 0);
 }
 
@@ -32,8 +30,10 @@ bool BorunovVRingMPI::PreProcessingImpl() {
   return true;
 }
 
-namespace {
-// Helper: determine participation on ring for given ranks
+inline void AddDelay() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+}
+
 bool ComputeIsParticipant(int ring_rank, int source, int target) {
   if (source == target) {
     return ring_rank == source;
@@ -44,7 +44,6 @@ bool ComputeIsParticipant(int ring_rank, int source, int target) {
   return (ring_rank >= source || ring_rank <= target);
 }
 
-// Handle the case when current rank is the source: send to next
 void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int next_rank, int target, int data) {
   std::vector<int> path_history;
   path_history.push_back(ring_rank);
@@ -52,6 +51,7 @@ void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int 
     self->GetOutput() = std::move(path_history);
     return;
   }
+  AddDelay();
   int path_size = static_cast<int>(path_history.size());
   MPI_Send(&path_size, 1, MPI_INT, next_rank, 0, ring_comm);
   if (path_size > 0) {
@@ -60,13 +60,11 @@ void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int 
   MPI_Send(&data, 1, MPI_INT, next_rank, 2, ring_comm);
 }
 
-// Handle participant receiving and forwarding
 void HandleParticipant(BorunovVRingMPI *self, MPI_Comm ring_comm, int prev_rank, int next_rank, int ring_rank,
                        int target) {
   int path_size = 0;
   MPI_Status status;
   MPI_Recv(&path_size, 1, MPI_INT, prev_rank, 0, ring_comm, &status);
-  // Validate and clamp received path size to avoid invalid allocations
   int comm_size = 0;
   MPI_Comm_size(ring_comm, &comm_size);
   if (path_size < 0) {
@@ -80,6 +78,7 @@ void HandleParticipant(BorunovVRingMPI *self, MPI_Comm ring_comm, int prev_rank,
   }
   int received_data = 0;
   MPI_Recv(&received_data, 1, MPI_INT, prev_rank, 2, ring_comm, &status);
+  AddDelay();
   path_history.push_back(ring_rank);
   if (ring_rank == target) {
     self->GetOutput() = path_history;
@@ -90,7 +89,6 @@ void HandleParticipant(BorunovVRingMPI *self, MPI_Comm ring_comm, int prev_rank,
   MPI_Send(path_history.data(), path_size, MPI_INT, next_rank, 1, ring_comm);
   MPI_Send(&received_data, 1, MPI_INT, next_rank, 2, ring_comm);
 }
-}  // namespace
 
 bool BorunovVRingMPI::RunImpl() {
   int world_rank = 0;
@@ -102,13 +100,11 @@ bool BorunovVRingMPI::RunImpl() {
   int source = input.source_rank;
   int target = input.target_rank;
 
-  // Normalize ranks modulo world size
   if (world_size > 0) {
     source = source % world_size;
     target = target % world_size;
   }
 
-  // Create ring communicator
   MPI_Group world_group = MPI_GROUP_NULL;
   MPI_Comm_group(MPI_COMM_WORLD, &world_group);
   MPI_Comm ring_comm = MPI_COMM_WORLD;

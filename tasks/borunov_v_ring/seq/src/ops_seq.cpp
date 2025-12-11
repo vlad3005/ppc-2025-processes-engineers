@@ -3,14 +3,20 @@
 #include <mpi.h>
 
 #include <array>
+#include <chrono>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
 #include "util/include/util.hpp"
 
-namespace {
-// Helper: determine if a rank participates in the transmission
+namespace borunov_v_ring {
+
+inline void AddDelay() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+}
+
 bool IsParticipant(int rank, int source, int target) {
   if (source == target) {
     return rank == source;
@@ -18,8 +24,8 @@ bool IsParticipant(int rank, int source, int target) {
   return (source < target) ? (rank >= source && rank <= target) : (rank >= source || rank <= target);
 }
 
-// Helper: send path and data
 void SendPath(MPI_Comm comm, int dest, const std::vector<int> &path, int data) {
+  AddDelay();
   int path_size = static_cast<int>(path.size());
   MPI_Send(&path_size, 1, MPI_INT, dest, 0, comm);
   if (path_size > 0) {
@@ -28,13 +34,11 @@ void SendPath(MPI_Comm comm, int dest, const std::vector<int> &path, int data) {
   MPI_Send(&data, 1, MPI_INT, dest, 2, comm);
 }
 
-// Helper: receive path and data
 std::vector<int> ReceivePath(MPI_Comm comm, int src) {
   int path_size = 0;
   MPI_Status status;
   MPI_Recv(&path_size, 1, MPI_INT, src, 0, comm, &status);
 
-  // Clamp received size to comm size
   int comm_size = 0;
   MPI_Comm_size(comm, &comm_size);
   if (path_size < 0 || path_size > comm_size) {
@@ -49,10 +53,10 @@ std::vector<int> ReceivePath(MPI_Comm comm, int src) {
 
   int data = 0;
   MPI_Recv(&data, 1, MPI_INT, src, 2, comm, &status);
+  AddDelay();
   return path;
 }
 
-// Sequential fallback
 bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int source, int target) {
   int size = ppc::util::GetNumProc();
   if (size <= 0) {
@@ -74,9 +78,7 @@ bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int source, in
   return true;
 }
 
-// Ring topology using Cartesian topology
 bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target, int world_size) {
-  // Create 1D Cartesian ring topology
   std::array<int, 1> dims = {world_size};
   std::array<int, 1> periods = {1};
   MPI_Comm ring_comm = MPI_COMM_WORLD;
@@ -87,7 +89,6 @@ bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target,
   MPI_Comm_rank(ring_comm, &ring_rank);
   MPI_Comm_size(ring_comm, &ring_size);
 
-  // Get neighbors using Cart_shift
   int prev_rank = 0;
   int next_rank = 0;
   MPI_Cart_shift(ring_comm, 0, 1, &prev_rank, &next_rank);
@@ -95,7 +96,6 @@ bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target,
   bool is_participant = IsParticipant(ring_rank, source, target);
 
   if (ring_rank == source) {
-    // Source: send path starting with itself
     std::vector<int> path_history;
     path_history.push_back(ring_rank);
     if (ring_rank != target) {
@@ -104,7 +104,6 @@ bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target,
       self->GetOutput() = std::move(path_history);
     }
   } else if (is_participant) {
-    // Participant: receive, append, and forward
     std::vector<int> path_history = ReceivePath(ring_comm, prev_rank);
     path_history.push_back(ring_rank);
     if (ring_rank == target) {
@@ -121,9 +120,6 @@ bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target,
 
   return true;
 }
-}  // namespace
-
-namespace borunov_v_ring {
 
 BorunovVRingSEQ::BorunovVRingSEQ(const InType &in) {
   SetTypeOfTask(GetStaticTypeOfTask());

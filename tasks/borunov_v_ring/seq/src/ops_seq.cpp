@@ -100,14 +100,14 @@ bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target,
     if (ring_rank != target) {
       SendPath(ring_comm, next_rank, path_history, self->GetInput().data);
     } else {
-      self->GetOutput() = path_history;
+      self->GetOutput() = std::move(path_history);
     }
   } else if (is_participant) {
     // Participant: receive, append, and forward
     std::vector<int> path_history = ReceivePath(ring_comm, prev_rank);
     path_history.push_back(ring_rank);
     if (ring_rank == target) {
-      self->GetOutput() = path_history;
+      self->GetOutput() = std::move(path_history);
     } else {
       SendPath(ring_comm, next_rank, path_history, self->GetInput().data);
     }

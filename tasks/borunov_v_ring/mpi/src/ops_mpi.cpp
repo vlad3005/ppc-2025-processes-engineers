@@ -17,9 +17,6 @@ BorunovVRingMPI::BorunovVRingMPI(const InType &in) {
 
 // Валидация: проверяем корректность ранков источника и назначения
 bool BorunovVRingMPI::ValidationImpl() {
-  // Avoid calling MPI functions before MPI_Init. If MPI is not
-  // initialized yet, only perform simple non-negativity checks so that
-  // constructing task parameters or inspecting tasks doesn't require MPI.
   int initialized = 0;
   MPI_Initialized(&initialized);
   if (initialized == 0) {
@@ -51,9 +48,7 @@ void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int 
   std::vector<int> path_history;
   path_history.push_back(ring_rank);
   if (ring_rank == target) {
-    std::vector<int> output;
-    output = path_history;
-    self->GetOutput() = output;
+    self->GetOutput() = std::move(path_history);
     return;
   }
   int path_size = static_cast<int>(path_history.size());

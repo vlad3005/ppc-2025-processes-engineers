@@ -14,7 +14,7 @@
 namespace borunov_v_ring {
 namespace {
 inline void AddDelay() {
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  std::this_thread::sleep_for(std::chrono::milliseconds(400));
 }
 
 bool IsParticipant(int rank, int source, int target) {

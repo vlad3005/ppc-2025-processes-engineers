@@ -18,6 +18,7 @@ namespace borunov_v_ring {
 
 using FuncTestType = std::tuple<InType, std::string>;
 
+namespace {
 OutType CalculateExpectedPath(const InType &input, int size) {
   std::vector<int> path_history;
   int current_rank = input.source_rank;
@@ -42,6 +43,7 @@ OutType CalculateExpectedPath(const InType &input, int size) {
 
   return path_history;
 }
+}  // namespace
 
 class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutType, FuncTestType> {
  public:
@@ -103,13 +105,18 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
  protected:
   void SetUp() override {
     const auto &full_params = GetParam();
+
     const auto &user_test_data = std::get<2>(full_params);
+
+    // Извлекаем InType из FuncTestType
     input_data_ = std::get<0>(user_test_data);
   }
 
  private:
   InType input_data_ = {0, 0, 0};
 };
+
+namespace {
 
 TEST_P(BorunovVRingFuncTestes, RingPathTest) {
   ExecuteTest(GetParam());
@@ -126,7 +133,9 @@ const auto kFuncTestTasksList =
 
 const auto kFuncGtestValues = ppc::util::TupleToGTestValues(kFuncTestTasksList);
 
+// Используем PrintFuncTestName из базового класса, который включает имя задачи (MPI/SEQ)
 INSTANTIATE_TEST_SUITE_P(BorunovVRingFuncTestInstantiation, BorunovVRingFuncTestes, kFuncGtestValues,
                          BorunovVRingFuncTestes::PrintFuncTestName<BorunovVRingFuncTestes>);
 
+}  // namespace
 }  // namespace borunov_v_ring

@@ -12,7 +12,7 @@
 #include "util/include/util.hpp"
 
 namespace borunov_v_ring {
-
+namespace {
 inline void AddDelay() {
   std::this_thread::sleep_for(std::chrono::milliseconds(150));
 }
@@ -120,7 +120,7 @@ bool RunMpiBranch(borunov_v_ring::BorunovVRingSEQ *self, int source, int target,
 
   return true;
 }
-
+}  // namespace
 BorunovVRingSEQ::BorunovVRingSEQ(const InType &in) {
   SetTypeOfTask(GetStaticTypeOfTask());
   GetInput() = in;

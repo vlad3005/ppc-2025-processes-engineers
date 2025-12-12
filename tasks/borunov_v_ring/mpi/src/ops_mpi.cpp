@@ -29,7 +29,7 @@ bool BorunovVRingMPI::ValidationImpl() {
 bool BorunovVRingMPI::PreProcessingImpl() {
   return true;
 }
-
+namespace {
 inline void AddDelay() {
   std::this_thread::sleep_for(std::chrono::milliseconds(150));
 }
@@ -89,6 +89,7 @@ void HandleParticipant(BorunovVRingMPI *self, MPI_Comm ring_comm, int prev_rank,
   MPI_Send(path_history.data(), path_size, MPI_INT, next_rank, 1, ring_comm);
   MPI_Send(&received_data, 1, MPI_INT, next_rank, 2, ring_comm);
 }
+}  // namespace
 
 bool BorunovVRingMPI::RunImpl() {
   int world_rank = 0;

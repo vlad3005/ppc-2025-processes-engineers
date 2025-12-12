@@ -105,10 +105,7 @@ class BorunovVRingFuncTestes : public ppc::util::BaseRunFuncTests<InType, OutTyp
  protected:
   void SetUp() override {
     const auto &full_params = GetParam();
-
     const auto &user_test_data = std::get<2>(full_params);
-
-    // Извлекаем InType из FuncTestType
     input_data_ = std::get<0>(user_test_data);
   }
 

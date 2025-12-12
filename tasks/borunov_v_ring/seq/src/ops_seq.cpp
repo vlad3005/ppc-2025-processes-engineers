@@ -4,7 +4,7 @@
 
 #include <array>
 #include <chrono>
-#include <thread>
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -80,6 +80,7 @@ bool RunSequentialFallback(borunov_v_ring::BorunovVRingSEQ *self, int source, in
   if (steps < size || current == (target % size)) {
     path_history.push_back(current);
   }
+  AddDelay();
   self->GetOutput() = path_history;
   return true;
 }

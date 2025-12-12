@@ -3,8 +3,8 @@
 #include <mpi.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstddef>
-#include <thread>
 #include <utility>
 #include <vector>
 

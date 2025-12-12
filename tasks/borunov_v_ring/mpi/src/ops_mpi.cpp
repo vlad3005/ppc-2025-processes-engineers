@@ -31,7 +31,13 @@ bool BorunovVRingMPI::PreProcessingImpl() {
 }
 namespace {
 inline void AddDelay() {
-  std::this_thread::sleep_for(std::chrono::milliseconds(230));
+  auto start_time = std::chrono::steady_clock::now();
+  auto delay_duration = std::chrono::milliseconds(200);
+
+  while (std::chrono::steady_clock::now() - start_time < delay_duration) {
+    volatile double dummy = std::sin(1.0);
+    (void)dummy;
+  }
 }
 
 bool ComputeIsParticipant(int ring_rank, int source, int target) {

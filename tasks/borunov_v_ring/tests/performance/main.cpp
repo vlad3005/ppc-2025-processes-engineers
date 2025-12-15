@@ -44,11 +44,7 @@ class BorunovVRingPerfTest : public ppc::util::BaseRunPerfTests<InType, OutType>
   void SetUp() override {
     int size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    if (size > 1) {
-      input_data_ = RingTaskData{100, 0, 3};
-    } else {
-      input_data_ = RingTaskData{100, 0, 0};
-    }
+    input_data_ = RingTaskData{100, 0, 3};
   }
 
   bool CheckTestOutputData(OutType &output_data) final {

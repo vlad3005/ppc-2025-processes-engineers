@@ -26,8 +26,8 @@ bool BorunovVBlockPartitioningMPI::ValidationImpl() {
     }
     int w = GetInput()[0];
     int h = GetInput()[1];
-    const std::size_t expected_size =
-        static_cast<std::size_t>(2) + static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    const std::size_t pixels = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    const std::size_t expected_size = static_cast<std::size_t>(2) + pixels;
     return GetInput().size() == expected_size;
   }
   return true;
@@ -96,23 +96,64 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {
 
   for (int i = 0; i < my_rows; ++i) {
     for (int j = 0; j < width; ++j) {
-      float sum = 0.0F;
-      for (int ky = -1; ky <= 1; ++ky) {
-        for (int kx = -1; kx <= 1; ++kx) {
-          int nx = std::clamp(j + kx, 0, width - 1);
-          int val = 0;
-          int target_row = i + ky;
+      const int x0 = std::clamp(j - 1, 0, width - 1);
+      const int x1 = j;
+      const int x2 = std::clamp(j + 1, 0, width - 1);
 
-          if (target_row < 0) {
-            val = (rank == 0) ? local_input[(i * width) + nx] : up_row[nx];
-          } else if (target_row >= my_rows) {
-            val = (rank == size - 1) ? local_input[(i * width) + nx] : down_row[nx];
-          } else {
-            val = local_input[(target_row * width) + nx];
-          }
-          sum += static_cast<float>(val) * kernel[static_cast<std::size_t>(ky + 1)][static_cast<std::size_t>(kx + 1)];
-        }
+      const int base = i * width;
+
+      const int i_up = (i == 0) ? i : i - 1;
+      const int i_down = (i == my_rows - 1) ? i : i + 1;
+
+      int y0_val_left = 0, y0_val_center = 0, y0_val_right = 0;
+      int y1_val_left = 0, y1_val_center = 0, y1_val_right = 0;
+      int y2_val_left = 0, y2_val_center = 0, y2_val_right = 0;
+
+      // upper row
+      if (i_up < 0) {
+        // use halo row for ranks > 0, or clamp to first row for rank 0
+        y0_val_left = (rank == 0) ? local_input[base + x0] : up_row[x0];
+        y0_val_center = (rank == 0) ? local_input[base + x1] : up_row[x1];
+        y0_val_right = (rank == 0) ? local_input[base + x2] : up_row[x2];
+      } else {
+        const int row = (i_up == i) ? i : i_up;
+        const int row_base = row * width;
+        y0_val_left = local_input[row_base + x0];
+        y0_val_center = local_input[row_base + x1];
+        y0_val_right = local_input[row_base + x2];
       }
+
+      // middle row (always local)
+      y1_val_left = local_input[base + x0];
+      y1_val_center = local_input[base + x1];
+      y1_val_right = local_input[base + x2];
+
+      // bottom row
+      if (i_down >= my_rows) {
+        y2_val_left = (rank == size - 1) ? local_input[base + x0] : down_row[x0];
+        y2_val_center = (rank == size - 1) ? local_input[base + x1] : down_row[x1];
+        y2_val_right = (rank == size - 1) ? local_input[base + x2] : down_row[x2];
+      } else {
+        const int row_base = i_down * width;
+        y2_val_left = local_input[row_base + x0];
+        y2_val_center = local_input[row_base + x1];
+        y2_val_right = local_input[row_base + x2];
+      }
+
+      float sum = 0.0F;
+
+      sum += static_cast<float>(y0_val_left) * kernel[0][0];
+      sum += static_cast<float>(y0_val_center) * kernel[0][1];
+      sum += static_cast<float>(y0_val_right) * kernel[0][2];
+
+      sum += static_cast<float>(y1_val_left) * kernel[1][0];
+      sum += static_cast<float>(y1_val_center) * kernel[1][1];
+      sum += static_cast<float>(y1_val_right) * kernel[1][2];
+
+      sum += static_cast<float>(y2_val_left) * kernel[2][0];
+      sum += static_cast<float>(y2_val_center) * kernel[2][1];
+      sum += static_cast<float>(y2_val_right) * kernel[2][2];
+
       local_res[(i * width) + j] = static_cast<int>(std::round(sum));
     }
   }

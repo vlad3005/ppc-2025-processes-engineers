@@ -17,8 +17,8 @@ class BorunovVBlockPartitioningPerfTest : public ppc::util::BaseRunPerfTests<InT
     int width = 4000;
     int height = 4000;
 
-    input_data_.resize(static_cast<std::size_t>(2) +
-                       static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    const std::size_t pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    input_data_.resize(static_cast<std::size_t>(2) + pixels);
     input_data_[0] = width;
     input_data_[1] = height;
 
@@ -29,7 +29,8 @@ class BorunovVBlockPartitioningPerfTest : public ppc::util::BaseRunPerfTests<InT
       input_data_[2 + i] = dist(gen);
     }
 
-    output_data_.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    const std::size_t out_size = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    output_data_.resize(out_size);
   }
 
   void SetPerfAttributes(ppc::performance::PerfAttr &perf_attrs) override {

@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <random>
-#include <ranges>
 #include <string>
 #include <tuple>
 
@@ -26,9 +26,9 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
 
     std::string name = task_name + "_" + std::to_string(width) + "x" + std::to_string(height);
 
-    std::ranges::replace(name, ':', '_');
-    std::ranges::replace(name, '.', '_');
-    std::ranges::replace(name, '/', '_');
+    std::replace(name.begin(), name.end(), ':', '_');
+    std::replace(name.begin(), name.end(), '.', '_');
+    std::replace(name.begin(), name.end(), '/', '_');
 
     return name;
   }
@@ -43,7 +43,8 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> dist(0, 255);
 
-    input_data_.resize(2 + width * height);
+    const std::size_t pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    input_data_.resize(static_cast<std::size_t>(2) + pixels);
     input_data_[0] = width;
     input_data_[1] = height;
 
@@ -79,15 +80,28 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
 
     for (int i = 0; i < height; ++i) {
       for (int j = 0; j < width; ++j) {
+        const int x0 = std::clamp(j - 1, 0, width - 1);
+        const int x1 = j;
+        const int x2 = std::clamp(j + 1, 0, width - 1);
+
+        const int y0 = std::clamp(i - 1, 0, height - 1);
+        const int y1 = i;
+        const int y2 = std::clamp(i + 1, 0, height - 1);
+
         float sum = 0.0F;
-        for (int ky = -1; ky <= 1; ++ky) {
-          for (int kx = -1; kx <= 1; ++kx) {
-            int nx = std::clamp(j + kx, 0, width - 1);
-            int ny = std::clamp(i + ky, 0, height - 1);
-            sum += static_cast<float>(pixels[(ny * width) + nx]) *
-                   kernel[static_cast<std::size_t>(ky + 1)][static_cast<std::size_t>(kx + 1)];
-          }
-        }
+
+        sum += static_cast<float>(pixels[(y0 * width) + x0]) * kernel[0][0];
+        sum += static_cast<float>(pixels[(y0 * width) + x1]) * kernel[0][1];
+        sum += static_cast<float>(pixels[(y0 * width) + x2]) * kernel[0][2];
+
+        sum += static_cast<float>(pixels[(y1 * width) + x0]) * kernel[1][0];
+        sum += static_cast<float>(pixels[(y1 * width) + x1]) * kernel[1][1];
+        sum += static_cast<float>(pixels[(y1 * width) + x2]) * kernel[1][2];
+
+        sum += static_cast<float>(pixels[(y2 * width) + x0]) * kernel[2][0];
+        sum += static_cast<float>(pixels[(y2 * width) + x1]) * kernel[2][1];
+        sum += static_cast<float>(pixels[(y2 * width) + x2]) * kernel[2][2];
+
         reference_output_[(i * width) + j] = static_cast<int>(std::round(sum));
       }
     }

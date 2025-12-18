@@ -21,8 +21,8 @@ bool BorunovVBlockPartitioningSEQ::ValidationImpl() {
   }
   int w = GetInput()[0];
   int h = GetInput()[1];
-  const std::size_t expected_size =
-      static_cast<std::size_t>(2) + static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+  const std::size_t pixels = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+  const std::size_t expected_size = static_cast<std::size_t>(2) + pixels;
   return GetInput().size() == expected_size;
 }
 
@@ -46,17 +46,28 @@ bool BorunovVBlockPartitioningSEQ::RunImpl() {
 
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
+      const int x0 = std::clamp(j - 1, 0, width - 1);
+      const int x1 = j;
+      const int x2 = std::clamp(j + 1, 0, width - 1);
+
+      const int y0 = std::clamp(i - 1, 0, height - 1);
+      const int y1 = i;
+      const int y2 = std::clamp(i + 1, 0, height - 1);
+
       float sum = 0.0F;
 
-      for (int ky = -1; ky <= 1; ++ky) {
-        for (int kx = -1; kx <= 1; ++kx) {
-          int nx = std::clamp(j + kx, 0, width - 1);
-          int ny = std::clamp(i + ky, 0, height - 1);
+      sum += static_cast<float>(pixels[(y0 * width) + x0]) * kernel[0][0];
+      sum += static_cast<float>(pixels[(y0 * width) + x1]) * kernel[0][1];
+      sum += static_cast<float>(pixels[(y0 * width) + x2]) * kernel[0][2];
 
-          sum += static_cast<float>(pixels[(ny * width) + nx]) *
-                 kernel[static_cast<std::size_t>(ky + 1)][static_cast<std::size_t>(kx + 1)];
-        }
-      }
+      sum += static_cast<float>(pixels[(y1 * width) + x0]) * kernel[1][0];
+      sum += static_cast<float>(pixels[(y1 * width) + x1]) * kernel[1][1];
+      sum += static_cast<float>(pixels[(y1 * width) + x2]) * kernel[1][2];
+
+      sum += static_cast<float>(pixels[(y2 * width) + x0]) * kernel[2][0];
+      sum += static_cast<float>(pixels[(y2 * width) + x1]) * kernel[2][1];
+      sum += static_cast<float>(pixels[(y2 * width) + x2]) * kernel[2][2];
+
       GetOutput()[(i * width) + j] = static_cast<int>(std::round(sum));
     }
   }

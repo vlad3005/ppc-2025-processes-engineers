@@ -1,17 +1,17 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <numeric>
 #include <random>
+#include <ranges>
+#include <string>
 #include <tuple>
-#include <vector>
 
 #include "borunov_v_block_partitioning/common/include/common.hpp"
 #include "borunov_v_block_partitioning/mpi/include/ops_mpi.hpp"
 #include "borunov_v_block_partitioning/seq/include/ops_seq.hpp"
 #include "util/include/func_test_util.hpp"
-#include "util/include/util.hpp"
 
 namespace borunov_v_block_partitioning {
 
@@ -26,9 +26,9 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
 
     std::string name = task_name + "_" + std::to_string(width) + "x" + std::to_string(height);
 
-    std::replace(name.begin(), name.end(), ':', '_');
-    std::replace(name.begin(), name.end(), '.', '_');
-    std::replace(name.begin(), name.end(), '/', '_');
+    std::ranges::replace(name, ':', '_');
+    std::ranges::replace(name, '.', '_');
+    std::ranges::replace(name, '/', '_');
 
     return name;
   }
@@ -39,7 +39,8 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
     int width = std::get<0>(params);
     int height = std::get<1>(params);
 
-    std::mt19937 gen(42);
+    std::random_device rd;
+    std::mt19937 gen(rd());
     std::uniform_int_distribution<int> dist(0, 255);
 
     input_data_.resize(2 + width * height);
@@ -66,24 +67,28 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
   OutType reference_output_;
 
   void CalculateReferenceOutput(int width, int height) {
-    reference_output_.resize(width * height);
+    reference_output_.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
 
-    const float kernel[3][3] = {
-        {1 / 16.0f, 2 / 16.0f, 1 / 16.0f}, {2 / 16.0f, 4 / 16.0f, 2 / 16.0f}, {1 / 16.0f, 2 / 16.0f, 1 / 16.0f}};
+    const std::array<std::array<float, 3>, 3> kernel = {{
+        {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
+        {2.0F / 16.0F, 4.0F / 16.0F, 2.0F / 16.0F},
+        {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
+    }};
 
     const int *pixels = input_data_.data() + 2;
 
     for (int i = 0; i < height; ++i) {
       for (int j = 0; j < width; ++j) {
-        float sum = 0.0f;
+        float sum = 0.0F;
         for (int ky = -1; ky <= 1; ++ky) {
           for (int kx = -1; kx <= 1; ++kx) {
             int nx = std::clamp(j + kx, 0, width - 1);
             int ny = std::clamp(i + ky, 0, height - 1);
-            sum += static_cast<float>(pixels[ny * width + nx]) * kernel[ky + 1][kx + 1];
+            sum += static_cast<float>(pixels[(ny * width) + nx]) *
+                   kernel[static_cast<std::size_t>(ky + 1)][static_cast<std::size_t>(kx + 1)];
           }
         }
-        reference_output_[i * width + j] = static_cast<int>(std::round(sum));
+        reference_output_[(i * width) + j] = static_cast<int>(std::round(sum));
       }
     }
   }

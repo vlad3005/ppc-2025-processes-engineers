@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 
-#include <numeric>
+#include <cstddef>
 #include <random>
-#include <vector>
 
 #include "borunov_v_block_partitioning/common/include/common.hpp"
 #include "borunov_v_block_partitioning/mpi/include/ops_mpi.hpp"
 #include "borunov_v_block_partitioning/seq/include/ops_seq.hpp"
+#include "performance/include/performance.hpp"
 #include "util/include/perf_test_util.hpp"
 
 namespace borunov_v_block_partitioning {
@@ -17,17 +17,19 @@ class BorunovVBlockPartitioningPerfTest : public ppc::util::BaseRunPerfTests<InT
     int width = 4000;
     int height = 4000;
 
-    input_data_.resize(2 + width * height);
+    input_data_.resize(static_cast<std::size_t>(2) +
+                       static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
     input_data_[0] = width;
     input_data_[1] = height;
 
-    std::mt19937 gen(42);
+    std::random_device rd;
+    std::mt19937 gen(rd());
     std::uniform_int_distribution<int> dist(0, 255);
     for (int i = 0; i < width * height; ++i) {
       input_data_[2 + i] = dist(gen);
     }
 
-    output_data_.resize(width * height);
+    output_data_.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
   }
 
   void SetPerfAttributes(ppc::performance::PerfAttr &perf_attrs) override {
@@ -35,7 +37,10 @@ class BorunovVBlockPartitioningPerfTest : public ppc::util::BaseRunPerfTests<InT
   }
 
   bool CheckTestOutputData(OutType &output_data) final {
-    return output_data.size() == static_cast<size_t>(input_data_[0] * input_data_[1]);
+    const auto width = input_data_[0];
+    const auto height = input_data_[1];
+    const std::size_t expected_size = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    return output_data.size() == expected_size;
   }
 
   InType GetTestInputData() final {

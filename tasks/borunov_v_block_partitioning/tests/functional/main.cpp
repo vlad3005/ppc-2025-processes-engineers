@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <random>
+#include <ranges>
 #include <string>
 #include <tuple>
 
@@ -26,9 +27,9 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
 
     std::string name = task_name + "_" + std::to_string(width) + "x" + std::to_string(height);
 
-    std::replace(name.begin(), name.end(), ':', '_');
-    std::replace(name.begin(), name.end(), '.', '_');
-    std::replace(name.begin(), name.end(), '/', '_');
+    std::ranges::replace(name, ':', '_');
+    std::ranges::replace(name, '.', '_');
+    std::ranges::replace(name, '/', '_');
 
     return name;
   }

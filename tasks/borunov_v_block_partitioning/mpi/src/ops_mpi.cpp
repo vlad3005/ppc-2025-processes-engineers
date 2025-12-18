@@ -44,7 +44,7 @@ bool BorunovVBlockPartitioningMPI::PreProcessingImpl() {
   return true;
 }
 
-bool BorunovVBlockPartitioningMPI::RunImpl() {
+bool BorunovVBlockPartitioningMPI::RunImpl() {  // NOLINT(readability-function-cognitive-complexity)
   int size = 0;
   int rank = 0;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -105,9 +105,15 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {
       const int i_up = (i == 0) ? i : i - 1;
       const int i_down = (i == my_rows - 1) ? i : i + 1;
 
-      int y0_val_left = 0, y0_val_center = 0, y0_val_right = 0;
-      int y1_val_left = 0, y1_val_center = 0, y1_val_right = 0;
-      int y2_val_left = 0, y2_val_center = 0, y2_val_right = 0;
+      int y0_val_left = 0;
+      int y0_val_center = 0;
+      int y0_val_right = 0;
+      int y1_val_left = 0;
+      int y1_val_center = 0;
+      int y1_val_right = 0;
+      int y2_val_left = 0;
+      int y2_val_center = 0;
+      int y2_val_right = 0;
 
       // upper row
       if (i_up < 0) {

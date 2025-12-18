@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstddef>
 #include <random>
-#include <ranges>
 #include <string>
 #include <tuple>
 
@@ -40,8 +39,9 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
     int width = std::get<0>(params);
     int height = std::get<1>(params);
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    // Фиксированный seed нужен, чтобы все MPI-процессы генерировали
+    // абсолютно одинаковые входные данные и эталон.
+    std::mt19937 gen(42);  // NOLINT(cert-msc51-cpp)
     std::uniform_int_distribution<int> dist(0, 255);
 
     const std::size_t pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);

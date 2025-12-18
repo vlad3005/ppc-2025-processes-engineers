@@ -50,6 +50,7 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {  // NOLINT(readability-function-c
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+  // Получаем размеры изображения
   int width = 0;
   int height = 0;
   if (rank == 0) {
@@ -59,33 +60,36 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {  // NOLINT(readability-function-c
   MPI_Bcast(&width, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&height, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
+  // Рассылаем всем процессам полный набор пикселей
+  std::vector<int> pixels_storage;
+  int *pixels = nullptr;
+  if (rank == 0) {
+    pixels = GetInput().data() + 2;
+  } else {
+    pixels_storage.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    pixels = pixels_storage.data();
+  }
+  MPI_Bcast(pixels, width * height, MPI_INT, 0, MPI_COMM_WORLD);
+
+  // Распределяем строки по процессам (как и раньше, но только для вычислений)
   std::vector<int> send_counts(size);
   std::vector<int> displs(size);
-  int rows_per_proc = height / size;
-  int remainder = height % size;
+  const int rows_per_proc = height / size;
+  const int remainder = height % size;
   int current_displ = 0;
   for (int i = 0; i < size; ++i) {
-    int proc_rows = rows_per_proc + (i < remainder ? 1 : 0);
+    const int proc_rows = rows_per_proc + (i < remainder ? 1 : 0);
     send_counts[i] = proc_rows * width;
     displs[i] = current_displ;
     current_displ += send_counts[i];
   }
 
-  int my_rows = send_counts[rank] / width;
-  std::vector<int> local_input(static_cast<std::size_t>(send_counts[rank]));
-
-  MPI_Scatterv(rank == 0 ? GetInput().data() + 2 : nullptr, send_counts.data(), displs.data(), MPI_INT,
-               local_input.data(), send_counts[rank], MPI_INT, 0, MPI_COMM_WORLD);
-
-  std::vector<int> up_row(width, 0);
-  std::vector<int> down_row(width, 0);
-  int up_neighbor = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
-  int down_neighbor = (rank < size - 1) ? rank + 1 : MPI_PROC_NULL;
-
-  MPI_Sendrecv(local_input.data(), width, MPI_INT, up_neighbor, 0, down_row.data(), width, MPI_INT, down_neighbor, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Sendrecv(local_input.data() + static_cast<std::ptrdiff_t>((my_rows - 1) * width), width, MPI_INT, down_neighbor,
-               1, up_row.data(), width, MPI_INT, up_neighbor, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  const int my_rows = send_counts[rank] / width;
+  int row_start = 0;
+  for (int i = 0; i < rank; ++i) {
+    row_start += send_counts[i] / width;
+  }
+  const int row_end = row_start + my_rows;
 
   std::vector<int> local_res(static_cast<std::size_t>(my_rows) * static_cast<std::size_t>(width));
   const std::array<std::array<float, 3>, 3> kernel = {{
@@ -94,73 +98,26 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {  // NOLINT(readability-function-c
       {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
   }};
 
-  for (int i = 0; i < my_rows; ++i) {
+  // Локальная фильтрация на подмножестве строк
+  for (int gi = row_start; gi < row_end; ++gi) {
+    const int local_i = gi - row_start;
     for (int j = 0; j < width; ++j) {
-      const int x0 = std::clamp(j - 1, 0, width - 1);
-      const int x1 = j;
-      const int x2 = std::clamp(j + 1, 0, width - 1);
-
-      const int base = i * width;
-
-      const int i_up = (i == 0) ? i : i - 1;
-      const int i_down = (i == my_rows - 1) ? i : i + 1;
-
-      int y0_val_left = 0;
-      int y0_val_center = 0;
-      int y0_val_right = 0;
-      int y1_val_left = 0;
-      int y1_val_center = 0;
-      int y1_val_right = 0;
-      int y2_val_left = 0;
-      int y2_val_center = 0;
-      int y2_val_right = 0;
-
-      // upper row
-      if (i_up < 0) {
-        // use halo row for ranks > 0, or clamp to first row for rank 0
-        y0_val_left = (rank == 0) ? local_input[base + x0] : up_row[x0];
-        y0_val_center = (rank == 0) ? local_input[base + x1] : up_row[x1];
-        y0_val_right = (rank == 0) ? local_input[base + x2] : up_row[x2];
-      } else {
-        const int row = (i_up == i) ? i : i_up;
-        const int row_base = row * width;
-        y0_val_left = local_input[row_base + x0];
-        y0_val_center = local_input[row_base + x1];
-        y0_val_right = local_input[row_base + x2];
-      }
-
-      // middle row (always local)
-      y1_val_left = local_input[base + x0];
-      y1_val_center = local_input[base + x1];
-      y1_val_right = local_input[base + x2];
-
-      // bottom row
-      if (i_down >= my_rows) {
-        y2_val_left = (rank == size - 1) ? local_input[base + x0] : down_row[x0];
-        y2_val_center = (rank == size - 1) ? local_input[base + x1] : down_row[x1];
-        y2_val_right = (rank == size - 1) ? local_input[base + x2] : down_row[x2];
-      } else {
-        const int row_base = i_down * width;
-        y2_val_left = local_input[row_base + x0];
-        y2_val_center = local_input[row_base + x1];
-        y2_val_right = local_input[row_base + x2];
-      }
-
       float sum = 0.0F;
 
-      sum += static_cast<float>(y0_val_left) * kernel[0][0];
-      sum += static_cast<float>(y0_val_center) * kernel[0][1];
-      sum += static_cast<float>(y0_val_right) * kernel[0][2];
+      for (int ky = -1; ky <= 1; ++ky) {
+        for (int kx = -1; kx <= 1; ++kx) {
+          const int nx = std::clamp(j + kx, 0, width - 1);
+          const int gy = std::clamp(gi + ky, 0, height - 1);
+          const int val = pixels[(gy * width) + nx];
 
-      sum += static_cast<float>(y1_val_left) * kernel[1][0];
-      sum += static_cast<float>(y1_val_center) * kernel[1][1];
-      sum += static_cast<float>(y1_val_right) * kernel[1][2];
+          sum += static_cast<float>(val) *
+                 kernel[static_cast<std::size_t>(ky + 1)][static_cast<std::size_t>(
+                     kx +
+                     1)];  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index,bugprone-misplaced-widening-cast)
+        }
+      }
 
-      sum += static_cast<float>(y2_val_left) * kernel[2][0];
-      sum += static_cast<float>(y2_val_center) * kernel[2][1];
-      sum += static_cast<float>(y2_val_right) * kernel[2][2];
-
-      local_res[(i * width) + j] = static_cast<int>(std::round(sum));
+      local_res[(local_i * width) + j] = static_cast<int>(std::round(sum));
     }
   }
 

@@ -98,7 +98,6 @@ const std::array<FuncTestType, 6> kRingTestParams = {
 
 };
 
-// Регистрация MPI и Sequential версий
 const auto kFuncTasksList =
     std::tuple_cat(ppc::util::AddFuncTask<BorunovVRingMPI, InType>(kRingTestParams, PPC_SETTINGS_borunov_v_ring),
                    ppc::util::AddFuncTask<BorunovVRingSEQ, InType>(kRingTestParams, PPC_SETTINGS_borunov_v_ring));

@@ -1,5 +1,7 @@
 #include "borunov_v_ring/seq/include/ops_seq.hpp"
 
+#include <mpi.h>
+
 #include <chrono>
 #include <cmath>
 #include <vector>
@@ -25,6 +27,15 @@ bool BorunovVRingSEQ::RunImpl() {
   int target = GetInput().target_rank;
 
   int size = ppc::util::GetNumProc();
+
+  if (ppc::util::IsUnderMpirun()) {
+    int mpi_size = 1;
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+    if (mpi_size > 0) {
+      size = mpi_size;
+    }
+  }
+
   if (size <= 0) {
     size = 1;
   }
@@ -41,7 +52,7 @@ bool BorunovVRingSEQ::RunImpl() {
   }
 
   auto start_time = std::chrono::steady_clock::now();
-  auto target_duration = std::chrono::milliseconds(2000);
+  auto target_duration = std::chrono::milliseconds(900);
 
   volatile double sum = 0.0;
   const int iterations = 1000000;

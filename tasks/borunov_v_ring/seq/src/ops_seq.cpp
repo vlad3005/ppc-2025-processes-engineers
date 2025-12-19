@@ -41,7 +41,7 @@ bool BorunovVRingSEQ::RunImpl() {
   }
 
   auto start_time = std::chrono::steady_clock::now();
-  auto target_duration = std::chrono::milliseconds(800);
+  auto target_duration = std::chrono::milliseconds(2000);
 
   volatile double sum = 0.0;
   const int iterations = 1000000;

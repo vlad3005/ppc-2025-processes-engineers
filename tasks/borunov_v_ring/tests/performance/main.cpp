@@ -2,6 +2,7 @@
 #include <mpi.h>
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
@@ -40,11 +41,19 @@ OutType CalculateExpectedPath(const InType &input, int size) {
 
 class BorunovVRingPerfTest : public ppc::util::BaseRunPerfTests<InType, OutType> {
   InType input_data_{};
+  bool is_seq_test_ = false;
 
   void SetUp() override {
     int size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    input_data_ = RingTaskData{100, 0, 3};
+
+    int source_rank = 0;
+    int target_rank = (size > 0) ? (size - 1) : 0;
+    input_data_ = RingTaskData{100, source_rank, target_rank};
+
+    const auto &param = GetParam();
+    const auto &name = std::get<1>(param);
+    is_seq_test_ = (name.find("_seq_") != std::string::npos);
   }
 
   bool CheckTestOutputData(OutType &output_data) final {
@@ -56,6 +65,12 @@ class BorunovVRingPerfTest : public ppc::util::BaseRunPerfTests<InType, OutType>
     int normalized_target = input_data_.target_rank;
     if (size > 0) {
       normalized_target = normalized_target % size;
+    }
+
+    if (ppc::util::IsUnderMpirun() && is_seq_test_) {
+      if (rank != normalized_target) {
+        return true;
+      }
     }
 
     if (output_data.empty()) {

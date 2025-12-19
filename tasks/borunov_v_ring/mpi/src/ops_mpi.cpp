@@ -133,6 +133,7 @@ bool BorunovVRingMPI::RunImpl() {
     HandleSource(this, ring_comm, ring_rank, next_rank, target, input.data);
   } else if (is_participant) {
     HandleParticipant(this, ring_comm, prev_rank, next_rank, ring_rank, target);
+  } else {
   }
 
   MPI_Barrier(ring_comm);

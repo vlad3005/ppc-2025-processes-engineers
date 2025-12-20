@@ -55,7 +55,7 @@ bool BorunovVRingSEQ::RunImpl() {
   auto target_duration = std::chrono::milliseconds(900);
 
   volatile double sum = 0.0;
-  const int iterations = 1000000;
+  const int iterations = 10000;
 
   while (std::chrono::steady_clock::now() - start_time < target_duration) {
     for (int i = 0; i < iterations; ++i) {

@@ -32,12 +32,17 @@ bool BorunovVRingMPI::PreProcessingImpl() {
 namespace {
 inline void AddDelay() {
   auto start_time = std::chrono::steady_clock::now();
-  auto delay_duration = std::chrono::milliseconds(200);
+  auto target_duration = std::chrono::milliseconds(200);
 
-  while (std::chrono::steady_clock::now() - start_time < delay_duration) {
-    volatile double dummy = std::sin(1.0);
-    (void)dummy;
+  volatile double sum = 0.0;
+  const int iterations = 10000;
+
+  while (std::chrono::steady_clock::now() - start_time < target_duration) {
+    for (int i = 0; i < iterations; ++i) {
+      sum += std::sin(static_cast<double>(i));
+    }
   }
+  (void)sum;
 }
 
 bool ComputeIsParticipant(int ring_rank, int source, int target) {
@@ -53,11 +58,11 @@ bool ComputeIsParticipant(int ring_rank, int source, int target) {
 void HandleSource(BorunovVRingMPI *self, MPI_Comm ring_comm, int ring_rank, int next_rank, int target, int data) {
   std::vector<int> path_history;
   path_history.push_back(ring_rank);
+  AddDelay();
   if (ring_rank == target) {
     self->GetOutput() = std::move(path_history);
     return;
   }
-  AddDelay();
   int path_size = static_cast<int>(path_history.size());
   MPI_Send(&path_size, 1, MPI_INT, next_rank, 0, ring_comm);
   if (path_size > 0) {

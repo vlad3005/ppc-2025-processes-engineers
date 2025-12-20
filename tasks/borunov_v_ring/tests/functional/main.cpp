@@ -2,12 +2,8 @@
 #include <mpi.h>
 
 #include <array>
-#include <chrono>
-#include <cstddef>
-#include <future>
 #include <string>
 #include <tuple>
-#include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
 #include "borunov_v_ring/mpi/include/ops_mpi.hpp"
@@ -84,19 +80,17 @@ class BorunovVRingFuncTests : public ppc::util::BaseRunFuncTests<InType, OutType
   }
 
  private:
-  InType input_data_;
+  InType input_data_{};
 };
 
 TEST_P(BorunovVRingFuncTests, RingPathVerification) {
   ExecuteTest(GetParam());
 }
 
-const std::array<FuncTestType, 6> kRingTestParams = {
+const std::array<FuncTestType, 5> kRingTestParams = {
     FuncTestType({100, 0, 2}, "ForwardShort"), FuncTestType({200, 2, 0}, "WrapAround"),
     FuncTestType({300, 1, 1}, "SelfDelivery"), FuncTestType({400, 0, 3}, "LongPath"),
-    FuncTestType({500, 3, 2}, "AlmostFullCircle")
-
-};
+    FuncTestType({500, 3, 2}, "AlmostFullCircle")};
 
 const auto kFuncTasksList =
     std::tuple_cat(ppc::util::AddFuncTask<BorunovVRingMPI, InType>(kRingTestParams, PPC_SETTINGS_borunov_v_ring),

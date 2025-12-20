@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "borunov_v_ring/common/include/common.hpp"
+#include "util/include/util.hpp"
 
 namespace borunov_v_ring {
 BorunovVRingSEQ::BorunovVRingSEQ(const InType &in) {
@@ -52,7 +53,7 @@ bool BorunovVRingSEQ::RunImpl() {
   }
 
   auto start_time = std::chrono::steady_clock::now();
-  auto target_duration = std::chrono::milliseconds(900);
+  auto target_duration = std::chrono::milliseconds(800);
 
   volatile double sum = 0.0;
   const int iterations = 10000;

@@ -44,36 +44,21 @@ bool BorunovVBlockPartitioningMPI::PreProcessingImpl() {
   return true;
 }
 
-bool BorunovVBlockPartitioningMPI::RunImpl() {  // NOLINT(readability-function-cognitive-complexity)
-  int size = 0;
-  int rank = 0;
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+namespace {
 
-  // Получаем размеры изображения
-  int width = 0;
-  int height = 0;
-  if (rank == 0) {
-    width = GetInput()[0];
-    height = GetInput()[1];
-  }
+void BroadcastDims(int &width, int &height) {
   MPI_Bcast(&width, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&height, 1, MPI_INT, 0, MPI_COMM_WORLD);
+}
 
-  // Рассылаем всем процессам полный набор пикселей
-  std::vector<int> pixels_storage;
-  int *pixels = nullptr;
-  if (rank == 0) {
-    pixels = GetInput().data() + 2;
-  } else {
-    pixels_storage.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
-    pixels = pixels_storage.data();
-  }
+void BroadcastPixels(int *pixels, int width, int height) {
   MPI_Bcast(pixels, width * height, MPI_INT, 0, MPI_COMM_WORLD);
+}
 
-  // Распределяем строки по процессам (как и раньше, но только для вычислений)
-  std::vector<int> send_counts(size);
-  std::vector<int> displs(size);
+void ComputeSendCountsDispls(int width, int height, int size, std::vector<int> &send_counts, std::vector<int> &displs) {
+  send_counts.assign(static_cast<std::size_t>(size), 0);
+  displs.assign(static_cast<std::size_t>(size), 0);
+
   const int rows_per_proc = height / size;
   const int remainder = height % size;
   int current_displ = 0;
@@ -83,22 +68,16 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {  // NOLINT(readability-function-c
     displs[i] = current_displ;
     current_displ += send_counts[i];
   }
+}
 
-  const int my_rows = send_counts[rank] / width;
-  int row_start = 0;
-  for (int i = 0; i < rank; ++i) {
-    row_start += send_counts[i] / width;
-  }
-  const int row_end = row_start + my_rows;
-
-  std::vector<int> local_res(static_cast<std::size_t>(my_rows) * static_cast<std::size_t>(width));
+void ApplyKernelToPartition(const int *pixels, int width, int height, int row_start, int row_end,
+                            std::vector<int> &local_res) {
   const std::array<std::array<float, 3>, 3> kernel = {{
       {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
       {2.0F / 16.0F, 4.0F / 16.0F, 2.0F / 16.0F},
       {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
   }};
 
-  // Локальная фильтрация на подмножестве строк
   for (int gi = row_start; gi < row_end; ++gi) {
     const int local_i = gi - row_start;
     for (int j = 0; j < width; ++j) {
@@ -127,6 +106,44 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {  // NOLINT(readability-function-c
       local_res[(local_i * width) + j] = static_cast<int>(std::round(sum));
     }
   }
+}
+
+}  // namespace
+
+bool BorunovVBlockPartitioningMPI::RunImpl() {
+  int size = 0;
+  int rank = 0;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  int width = 0;
+  int height = 0;
+  if (rank == 0) {
+    width = GetInput()[0];
+    height = GetInput()[1];
+  }
+  BroadcastDims(width, height);
+
+  std::vector<int> pixels_storage;
+  int *pixels = nullptr;
+  if (rank == 0) {
+    pixels = GetInput().data() + 2;
+  } else {
+    pixels_storage.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    pixels = pixels_storage.data();
+  }
+  BroadcastPixels(pixels, width, height);
+
+  std::vector<int> send_counts;
+  std::vector<int> displs;
+  ComputeSendCountsDispls(width, height, size, send_counts, displs);
+
+  const int my_rows = send_counts[rank] / width;
+  const int row_start = displs[rank] / width;
+  const int row_end = row_start + my_rows;
+
+  std::vector<int> local_res(static_cast<std::size_t>(my_rows) * static_cast<std::size_t>(width));
+  ApplyKernelToPartition(pixels, width, height, row_start, row_end, local_res);
 
   const int local_count = static_cast<int>(local_res.size());  // assumes data size fits into int
   MPI_Gatherv(local_res.data(), local_count, MPI_INT, rank == 0 ? GetOutput().data() : nullptr, send_counts.data(),

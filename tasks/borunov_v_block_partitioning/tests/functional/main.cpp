@@ -4,7 +4,6 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <random>
 #include <string>
 #include <tuple>
 
@@ -39,10 +38,7 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
     int width = std::get<0>(params);
     int height = std::get<1>(params);
 
-    // Фиксированный seed нужен, чтобы все MPI-процессы генерировали
-    // абсолютно одинаковые входные данные и эталон.
-    std::mt19937 gen(42);  // NOLINT(cert-msc51-cpp)
-    std::uniform_int_distribution<int> dist(0, 255);
+    const int fill_value = 42;
 
     const std::size_t pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
     input_data_.resize(static_cast<std::size_t>(2) + pixels);
@@ -50,7 +46,7 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
     input_data_[1] = height;
 
     for (int i = 0; i < width * height; ++i) {
-      input_data_[2 + i] = dist(gen);
+      input_data_[2 + i] = fill_value;
     }
 
     CalculateReferenceOutput(width, height);

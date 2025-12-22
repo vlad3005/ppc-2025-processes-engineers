@@ -70,16 +70,33 @@ void ComputeSendCountsDispls(int width, int height, int size, std::vector<int> &
   }
 }
 
-void ApplyKernelToPartition(const int *pixels, int width, int height, int row_start, int row_end,
-                            std::vector<int> &local_res) {
+void ComputeSendCountsDisplsWithHalo(int width, int height, const std::vector<int> &send_counts,
+                                     const std::vector<int> &displs, std::vector<int> &send_counts_halo,
+                                     std::vector<int> &displs_halo) {
+  const int size = static_cast<int>(send_counts.size());
+  send_counts_halo.assign(static_cast<std::size_t>(size), 0);
+  displs_halo.assign(static_cast<std::size_t>(size), 0);
+
+  for (int i = 0; i < size; ++i) {
+    const int row_start = displs[i] / width;
+    const int rows = send_counts[i] / width;
+    const int start_with_halo = std::max(0, row_start - 1);
+    const int end_with_halo = std::min(height, row_start + rows + 1);
+    send_counts_halo[i] = (end_with_halo - start_with_halo) * width;
+    displs_halo[i] = start_with_halo * width;
+  }
+}
+
+void ApplyKernelToLocalPartition(const int *local_pixels, int width, int height, int base_global_row,
+                                 int global_row_start, int global_row_end, std::vector<int> &local_res) {
   const std::array<std::array<float, 3>, 3> kernel = {{
       {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
       {2.0F / 16.0F, 4.0F / 16.0F, 2.0F / 16.0F},
       {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
   }};
 
-  for (int gi = row_start; gi < row_end; ++gi) {
-    const int local_i = gi - row_start;
+  for (int gi = global_row_start; gi < global_row_end; ++gi) {
+    const int local_i = gi - global_row_start;
     for (int j = 0; j < width; ++j) {
       const int x0 = std::clamp(j - 1, 0, width - 1);
       const int x1 = j;
@@ -89,19 +106,23 @@ void ApplyKernelToPartition(const int *pixels, int width, int height, int row_st
       const int y1 = gi;
       const int y2 = std::clamp(gi + 1, 0, height - 1);
 
+      const int y0_local = y0 - base_global_row;
+      const int y1_local = y1 - base_global_row;
+      const int y2_local = y2 - base_global_row;
+
       float sum = 0.0F;
 
-      sum += static_cast<float>(pixels[(y0 * width) + x0]) * kernel[0][0];
-      sum += static_cast<float>(pixels[(y0 * width) + x1]) * kernel[0][1];
-      sum += static_cast<float>(pixels[(y0 * width) + x2]) * kernel[0][2];
+      sum += static_cast<float>(local_pixels[(y0_local * width) + x0]) * kernel[0][0];
+      sum += static_cast<float>(local_pixels[(y0_local * width) + x1]) * kernel[0][1];
+      sum += static_cast<float>(local_pixels[(y0_local * width) + x2]) * kernel[0][2];
 
-      sum += static_cast<float>(pixels[(y1 * width) + x0]) * kernel[1][0];
-      sum += static_cast<float>(pixels[(y1 * width) + x1]) * kernel[1][1];
-      sum += static_cast<float>(pixels[(y1 * width) + x2]) * kernel[1][2];
+      sum += static_cast<float>(local_pixels[(y1_local * width) + x0]) * kernel[1][0];
+      sum += static_cast<float>(local_pixels[(y1_local * width) + x1]) * kernel[1][1];
+      sum += static_cast<float>(local_pixels[(y1_local * width) + x2]) * kernel[1][2];
 
-      sum += static_cast<float>(pixels[(y2 * width) + x0]) * kernel[2][0];
-      sum += static_cast<float>(pixels[(y2 * width) + x1]) * kernel[2][1];
-      sum += static_cast<float>(pixels[(y2 * width) + x2]) * kernel[2][2];
+      sum += static_cast<float>(local_pixels[(y2_local * width) + x0]) * kernel[2][0];
+      sum += static_cast<float>(local_pixels[(y2_local * width) + x1]) * kernel[2][1];
+      sum += static_cast<float>(local_pixels[(y2_local * width) + x2]) * kernel[2][2];
 
       local_res[(local_i * width) + j] = static_cast<int>(std::round(sum));
     }
@@ -124,26 +145,28 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {
   }
   BroadcastDims(width, height);
 
-  std::vector<int> pixels_storage;
-  int *pixels = nullptr;
-  if (rank == 0) {
-    pixels = GetInput().data() + 2;
-  } else {
-    pixels_storage.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
-    pixels = pixels_storage.data();
-  }
-  BroadcastPixels(pixels, width, height);
-
   std::vector<int> send_counts;
   std::vector<int> displs;
   ComputeSendCountsDispls(width, height, size, send_counts, displs);
+
+  std::vector<int> send_counts_halo;
+  std::vector<int> displs_halo;
+  ComputeSendCountsDisplsWithHalo(width, height, send_counts, displs, send_counts_halo, displs_halo);
+
+  const int local_pixels_count = send_counts_halo[rank];
+  std::vector<int> local_pixels(static_cast<std::size_t>(local_pixels_count));
+
+  MPI_Scatterv(rank == 0 ? (GetInput().data() + 2) : nullptr, send_counts_halo.data(), displs_halo.data(), MPI_INT,
+               local_pixels.data(), local_pixels_count, MPI_INT, 0, MPI_COMM_WORLD);
 
   const int my_rows = send_counts[rank] / width;
   const int row_start = displs[rank] / width;
   const int row_end = row_start + my_rows;
 
+  const int base_global_row = displs_halo[rank] / width;
+
   std::vector<int> local_res(static_cast<std::size_t>(my_rows) * static_cast<std::size_t>(width));
-  ApplyKernelToPartition(pixels, width, height, row_start, row_end, local_res);
+  ApplyKernelToLocalPartition(local_pixels.data(), width, height, base_global_row, row_start, row_end, local_res);
 
   const int local_count = static_cast<int>(local_res.size());  // assumes data size fits into int
   MPI_Gatherv(local_res.data(), local_count, MPI_INT, rank == 0 ? GetOutput().data() : nullptr, send_counts.data(),

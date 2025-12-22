@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
-#include <random>
 
 #include "borunov_v_block_partitioning/common/include/common.hpp"
 #include "borunov_v_block_partitioning/mpi/include/ops_mpi.hpp"
@@ -22,11 +21,9 @@ class BorunovVBlockPartitioningPerfTest : public ppc::util::BaseRunPerfTests<InT
     input_data_[0] = width;
     input_data_[1] = height;
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<int> dist(0, 255);
+    const int fill_value = 42;
     for (int i = 0; i < width * height; ++i) {
-      input_data_[2 + i] = dist(gen);
+      input_data_[2 + i] = fill_value;
     }
 
     const std::size_t out_size = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);

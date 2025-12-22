@@ -51,10 +51,6 @@ void BroadcastDims(int &width, int &height) {
   MPI_Bcast(&height, 1, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
-void BroadcastPixels(int *pixels, int width, int height) {
-  MPI_Bcast(pixels, width * height, MPI_INT, 0, MPI_COMM_WORLD);
-}
-
 void ComputeSendCountsDispls(int width, int height, int size, std::vector<int> &send_counts, std::vector<int> &displs) {
   send_counts.assign(static_cast<std::size_t>(size), 0);
   displs.assign(static_cast<std::size_t>(size), 0);
@@ -168,7 +164,7 @@ bool BorunovVBlockPartitioningMPI::RunImpl() {
   std::vector<int> local_res(static_cast<std::size_t>(my_rows) * static_cast<std::size_t>(width));
   ApplyKernelToLocalPartition(local_pixels.data(), width, height, base_global_row, row_start, row_end, local_res);
 
-  const int local_count = static_cast<int>(local_res.size());  // assumes data size fits into int
+  const int local_count = static_cast<int>(local_res.size());
   MPI_Gatherv(local_res.data(), local_count, MPI_INT, rank == 0 ? GetOutput().data() : nullptr, send_counts.data(),
               displs.data(), MPI_INT, 0, MPI_COMM_WORLD);
 

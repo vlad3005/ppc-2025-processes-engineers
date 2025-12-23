@@ -48,7 +48,7 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
     int *pixels_ptr = input_data_.data() + 2;
 
     if (pattern == 0) {
-      std::mt19937 gen(static_cast<unsigned int>(width * height) + 12345u);
+      std::mt19937 gen(static_cast<unsigned int>(width * height) + 12345U);
       std::uniform_int_distribution<int> dist(0, 255);
       for (std::size_t i = 0; i < pixels; ++i) {
         pixels_ptr[i] = dist(gen);
@@ -57,17 +57,17 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
       std::fill(pixels_ptr, pixels_ptr + pixels, 0);
       const int cy = height / 2;
       const int cx = width / 2;
-      pixels_ptr[cy * width + cx] = 255;
+      pixels_ptr[(cy * width) + cx] = 255;
     } else if (pattern == 2) {
-      for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-          pixels_ptr[y * width + x] = ((x + y) & 1) ? 0 : 255;
+      for (int row = 0; row < height; ++row) {
+        for (int col = 0; col < width; ++col) {
+          pixels_ptr[(row * width) + col] = (((col + row) & 1) != 0) ? 0 : 255;
         }
       }
     } else {
-      for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-          pixels_ptr[y * width + x] = (x * 255) / std::max(1, width - 1);
+      for (int row = 0; row < height; ++row) {
+        for (int col = 0; col < width; ++col) {
+          pixels_ptr[(row * width) + col] = (col * 255) / std::max(1, width - 1);
         }
       }
     }

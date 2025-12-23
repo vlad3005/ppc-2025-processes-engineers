@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <random>
 #include <string>
 #include <tuple>
 
@@ -38,15 +39,37 @@ class BorunovLinearFilterTest : public ppc::util::BaseRunFuncTests<InType, OutTy
     int width = std::get<0>(params);
     int height = std::get<1>(params);
 
-    const int fill_value = 42;
-
     const std::size_t pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
     input_data_.resize(static_cast<std::size_t>(2) + pixels);
     input_data_[0] = width;
     input_data_[1] = height;
 
-    for (int i = 0; i < width * height; ++i) {
-      input_data_[2 + i] = fill_value;
+    const int pattern = (width + height) % 4;
+    int *pixels_ptr = input_data_.data() + 2;
+
+    if (pattern == 0) {
+      std::mt19937 gen(static_cast<unsigned int>(width * height) + 12345u);
+      std::uniform_int_distribution<int> dist(0, 255);
+      for (std::size_t i = 0; i < pixels; ++i) {
+        pixels_ptr[i] = dist(gen);
+      }
+    } else if (pattern == 1) {
+      std::fill(pixels_ptr, pixels_ptr + pixels, 0);
+      const int cy = height / 2;
+      const int cx = width / 2;
+      pixels_ptr[cy * width + cx] = 255;
+    } else if (pattern == 2) {
+      for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+          pixels_ptr[y * width + x] = ((x + y) & 1) ? 0 : 255;
+        }
+      }
+    } else {
+      for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+          pixels_ptr[y * width + x] = (x * 255) / std::max(1, width - 1);
+        }
+      }
     }
 
     CalculateReferenceOutput(width, height);
@@ -109,8 +132,11 @@ TEST_P(BorunovLinearFilterTest, RunFilter) {
   ExecuteTest(GetParam());
 }
 
-const std::array<TestType, 4> kTestParams = {std::make_tuple(10, 10), std::make_tuple(20, 15), std::make_tuple(15, 20),
-                                             std::make_tuple(32, 32)};
+const std::array<TestType, 14> kTestParams = {
+    std::make_tuple(1, 1),     std::make_tuple(1, 64),   std::make_tuple(64, 1),    std::make_tuple(3, 5),
+    std::make_tuple(5, 3),     std::make_tuple(10, 10),  std::make_tuple(20, 15),   std::make_tuple(15, 20),
+    std::make_tuple(32, 32),   std::make_tuple(31, 29),  std::make_tuple(128, 128), std::make_tuple(256, 128),
+    std::make_tuple(128, 256), std::make_tuple(256, 256)};
 
 const auto kTestTasksList = std::tuple_cat(ppc::util::AddFuncTask<BorunovVBlockPartitioningMPI, InType>(
                                                kTestParams, PPC_SETTINGS_borunov_v_block_partitioning),

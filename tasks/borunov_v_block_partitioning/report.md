@@ -171,56 +171,83 @@ for (int i = 0; i < height; ++i) {
 
 ## Appendix
 
-
 ```cpp
-const std::array<std::array<float, 3>, 3> kernel = {{
-  {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
-  {2.0F / 16.0F, 4.0F / 16.0F, 2.0F / 16.0F},
-  {1.0F / 16.0F, 2.0F / 16.0F, 1.0F / 16.0F},
+const std::array<std::array<float,3>,3> kernel = {{
+  {1.0f/16.0f, 2.0f/16.0f, 1.0f/16.0f},
+  {2.0f/16.0f, 4.0f/16.0f, 2.0f/16.0f},
+  {1.0f/16.0f, 2.0f/16.0f, 1.0f/16.0f},
 }};
 
-for (int i = 0; i < height; ++i) {
-  for (int j = 0; j < width; ++j) {
-    const int x0 = std::clamp(j - 1, 0, width - 1);
-    // ... 
-    output[(i * width) + j] = static_cast<int>(std::round(sum));
+const int* pixels = input.data() + 2;
+std::vector<int> output(width * height);
+
+for (int y = 0; y < height; ++y) {
+  for (int x = 0; x < width; ++x) {
+    const int x0 = std::clamp(x - 1, 0, width - 1);
+    const int x1 = x;
+    const int x2 = std::clamp(x + 1, 0, width - 1);
+
+    const int y0 = std::clamp(y - 1, 0, height - 1);
+    const int y1 = y;
+    const int y2 = std::clamp(y + 1, 0, height - 1);
+
+    float sum = 0.0f;
+    sum += pixels[y0*width + x0] * kernel[0][0];
+    sum += pixels[y0*width + x1] * kernel[0][1];
+    sum += pixels[y0*width + x2] * kernel[0][2];
+
+    sum += pixels[y1*width + x0] * kernel[1][0];
+    sum += pixels[y1*width + x1] * kernel[1][1];
+    sum += pixels[y1*width + x2] * kernel[1][2];
+
+    sum += pixels[y2*width + x0] * kernel[2][0];
+    sum += pixels[y2*width + x1] * kernel[2][1];
+    sum += pixels[y2*width + x2] * kernel[2][2];
+
+    output[y*width + x] = static_cast<int>(std::round(sum));
   }
 }
 ```
+
+1) расчёт распределения строк и смещений
 
 ```cpp
 int rows_per_proc = height / size;
 int remainder = height % size;
 std::vector<int> send_counts(size), displs(size);
 int offset = 0;
-for (int i = 0; i < size; ++i) {
-  int rows = rows_per_proc + (i < remainder ? 1 : 0);
-  send_counts[i] = rows * width; 
-  displs[i] = offset;
-  offset += send_counts[i];
+for (int r = 0; r < size; ++r) {
+  int rows = rows_per_proc + (r < remainder ? 1 : 0);
+  send_counts[r] = rows * width; 
+  displs[r] = offset;
+  offset += send_counts[r];
 }
 
-int my_rows = send_counts[rank] / width;
+int my_pixels = send_counts[rank];
+int my_rows = my_pixels / width;
 int row_start = std::accumulate(send_counts.begin(), send_counts.begin() + rank, 0) / width;
-int row_end = row_start + my_rows; 
 ```
+
+2) подготовка буферов с halo вариант с рассылкой блоков, включающих halo:
 
 ```cpp
-int prev = (rank - 1 + size) % size;
-int next = (rank + 1) % size;
-MPI_Sendrecv(send_top.data(), width, MPI_INT, prev, 0,
-             recv_above.data(), width, MPI_INT, prev, 1,
-             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+std::vector<int> send_counts_halo(size), displs_halo(size);
+offset = 0;
+for (int r = 0; r < size; ++r) {
+  int rows = send_counts[r] / width;
+  int rows_with_halo = rows;
+  if (r > 0) rows_with_halo += 1;         
+  if (r + 1 < size) rows_with_halo += 1;  
+  send_counts_halo[r] = rows_with_halo * width;
+  displs_halo[r] = offset;
+  offset += send_counts_halo[r];
+}
 
-MPI_Sendrecv(send_bottom.data(), width, MPI_INT, next, 1,
-             recv_below.data(), width, MPI_INT, next, 0,
-             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+MPI_Scatterv(rank == 0 ? full_with_halo.data() : nullptr,
+             send_counts_halo.data(), displs_halo.data(), MPI_INT,
+             local_with_halo.data(), send_counts_halo[rank], MPI_INT,
+             0, MPI_COMM_WORLD);
 ```
 
-```cpp
-int local_count = static_cast<int>(local_res.size());
-MPI_Gatherv(local_res.data(), local_count, MPI_INT,
-            rank == 0 ? GetOutput().data() : nullptr,
-            send_counts.data(), displs.data(), MPI_INT,
-            0, MPI_COMM_WORLD);
-```
+
+
